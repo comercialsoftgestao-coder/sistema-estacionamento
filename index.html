@@ -219,8 +219,16 @@
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
             const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
-            // Firebase Config State
-            const [firebaseConfigStr, setFirebaseConfigStr] = useState(() => localStorage.getItem('parkingpro_firebase_config') || '');
+            // --- CONFIGURAÇÃO DO FIREBASE (EMBUTIDA) ---
+            const FIREBASE_CONFIG = {
+                apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
+                authDomain: "estacionamento-332eb.firebaseapp.com",
+                projectId: "estacionamento-332eb",
+                storageBucket: "estacionamento-332eb.firebasestorage.app",
+                messagingSenderId: "467691522256",
+                appId: "1:467691522256:web:6d4495458c494e753cb6d5"
+            };
+
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
@@ -272,40 +280,24 @@
 
             // --- FIREBASE INIT ---
             useEffect(() => {
-                if (firebaseConfigStr && !db) {
+                if (!firebase.apps.length) {
                     try {
-                        let configObj;
-                        // Tenta extrair a config do meio do texto colado
-                        try {
-                            // Procura por const firebaseConfig = { ... }
-                            const match = firebaseConfigStr.match(/const\s+firebaseConfig\s*=\s*({[\s\S]*?});/);
-                            if (match && match[1]) {
-                                // Se achou, usa apenas o objeto JSON
-                                configObj = new Function("return " + match[1])();
-                            } else {
-                                // Se não achou a estrutura exata, tenta converter o texto inteiro se for um objeto solto
-                                const raw = firebaseConfigStr.trim();
-                                if (raw.startsWith('{')) {
-                                     configObj = new Function("return " + raw)();
-                                }
-                            }
-                        } catch(e) { console.error("Parse error", e); }
-
-                        // Se conseguiu extrair a config
-                        if (configObj && !firebase.apps.length) {
-                            firebase.initializeApp(configObj);
-                            const firestore = firebase.firestore();
-                            setDb(firestore);
-                            setIsOnline(true);
-                            notify('Conectado à nuvem!', 'success');
-                        }
+                        firebase.initializeApp(FIREBASE_CONFIG);
+                        const firestore = firebase.firestore();
+                        setDb(firestore);
+                        setIsOnline(true);
+                        // notify('Conectado à nuvem!', 'success');
                     } catch (e) {
                         console.error("Erro Firebase", e);
-                        notify('Erro na configuração. Cole o código completo.', 'error');
                         setIsOnline(false);
                     }
+                } else {
+                    // Já inicializado
+                    const firestore = firebase.firestore();
+                    setDb(firestore);
+                    setIsOnline(true);
                 }
-            }, [firebaseConfigStr]);
+            }, []);
 
             // --- SYNC DATA HOOK ---
             const useSync = (collectionName, setState, fallbackData) => {
@@ -568,10 +560,6 @@
 
             // Config Save
             const saveConfig = () => {
-                if (firebaseConfigStr !== localStorage.getItem('parkingpro_firebase_config')) {
-                    localStorage.setItem('parkingpro_firebase_config', firebaseConfigStr);
-                    window.location.reload(); // Reload to init firebase
-                }
                 localStorage.setItem('parkingpro_config', JSON.stringify(config));
                 notify('Configurações salvas!');
             };
@@ -799,11 +787,6 @@
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div><label className="text-xs text-slate-400 block mb-1">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
                                                 <div><label className="text-xs text-slate-400 block mb-1">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
-                                            </div>
-                                            <div className="pt-4 border-t border-slate-700">
-                                                <label className="text-sm font-bold text-emerald-400 block mb-2 flex items-center gap-2"><i className="ph-fill ph-cloud-arrow-up"></i> Configuração do Firebase (JSON)</label>
-                                                <textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-xs font-mono h-32" placeholder='Cole aqui o JSON do Firebase: { apiKey: "...", ... }' value={firebaseConfigStr} onChange={e=>setFirebaseConfigStr(e.target.value)}></textarea>
-                                                <p className="text-[10px] text-slate-500 mt-1">Cole o código do Firebase (pode ser o snippet completo com 'const firebaseConfig').</p>
                                             </div>
                                             <button onClick={saveConfig} className="w-full bg-cyan-600 py-3 rounded font-bold">Salvar Configurações</button>
                                         </div>
