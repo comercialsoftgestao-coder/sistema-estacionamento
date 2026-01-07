@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Parking Pro - Gestão de Estacionamento & Lava-rápido</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel para compilar JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Tesseract.js para OCR (Leitura de Placas) -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+
+    <!-- Firebase App (o núcleo do SDK do Firebase) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <!-- Firebase Firestore (o banco de dados) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* Scrollbar Dark */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #020617; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Animações */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        
+        /* Estilos de Impressão (Tickets) */
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; color: black; }
+            .no-print { display: none !important; }
+        }
+
+        /* Ticket Style (Papel Térmico) */
+        .ticket-paper {
+            font-family: 'Courier New', Courier, monospace;
+            width: 300px; /* Largura padrão impressora térmica */
+            margin: 0 auto;
+            background: #fff;
+            color: #000;
+            padding: 10px;
+            text-align: center;
+            border: 1px dashed #ccc;
+        }
+
+        .ticket-divider { border-bottom: 1px dashed #000; margin: 10px 0; }
+
+        /* Estilo Ordem de Serviço A4/A5 */
+        .os-paper {
+            font-family: 'Arial', sans-serif;
+            width: 100%;
+            background: #fff;
+            color: #000;
+            padding: 20px;
+            border: 1px solid #000;
+        }
+
+        /* Código de Barras CSS Simples */
+        .barcode {
+            height: 40px;
+            width: 100%;
+            background-image: linear-gradient(90deg, 
+                #000 2%, transparent 2%, transparent 4%, #000 4%, #000 5%, transparent 5%, transparent 6%, #000 6%, 
+                #000 8%, transparent 8%, transparent 9%, #000 9%, #000 12%, transparent 12%, transparent 13%, #000 13%, 
+                #000 15%, transparent 15%, transparent 16%, #000 16%, #000 19%, transparent 19%, transparent 20%, #000 20%,
+                #000 23%, transparent 23%, transparent 24%, #000 24%, #000 25%, transparent 25%, transparent 26%, #000 26%,
+                #000 29%, transparent 29%, transparent 30%, #000 30%, #000 31%, transparent 31%, transparent 32%, #000 32%,
+                #000 35%, transparent 35%, transparent 36%, #000 36%, #000 38%, transparent 38%, transparent 39%, #000 39%,
+                #000 42%, transparent 42%, transparent 43%, #000 43%, #000 45%, transparent 45%, transparent 46%, #000 46%
+            );
+            background-size: 100% 100%;
+        }
+        
+        /* Custom Input Date Dark Mode */
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator, input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- COMPONENTE TOAST ---
+        const Toast = ({ message, type, show, onClose }) => {
+            if (!show) return null;
+            const colors = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : (type === 'info' ? 'bg-blue-600' : 'bg-cyan-600'));
+            return (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-4 ${colors} text-white px-6 py-4 rounded-lg shadow-2xl z-[70] flex items-center gap-3 animate-fade-in w-[90%] md:w-auto`}>
+                    <i className="ph-fill ph-info text-xl"></i>
+                    <span className="font-bold text-sm md:text-base">{message}</span>
+                </div>
+            );
+        };
+
+        const BrandLogo = () => (
+            <div className="flex items-center gap-2">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded flex items-center justify-center shadow-lg shadow-cyan-900/50">
+                    <i className="ph-fill ph-car text-white text-xl md:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 className="text-lg md:text-xl font-black italic tracking-tighter text-white leading-none">PARKING<span className="text-cyan-400">PRO</span></h1>
+                    <p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Sistema Inteligente</p>
+                </div>
+            </div>
+        );
+
+        // --- CHART COMPONENT ---
+        const ParkingChart = ({ historyData, financeData }) => {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+                if (chartRef.current) chartRef.current.destroy();
+
+                const ctx = canvasRef.current.getContext('2d');
+                
+                const last7Days = [...Array(7)].map((_, i) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    return d.toLocaleDateString('pt-BR');
+                }).reverse();
+
+                const parkingRevenue = last7Days.map(date => {
+                    return historyData.filter(h => new Date(h.exitTime).toLocaleDateString('pt-BR') === date)
+                                .reduce((acc, curr) => acc + curr.total, 0);
+                });
+
+                const expensesData = last7Days.map(date => {
+                    return financeData.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR') === date)
+                                .reduce((acc, curr) => acc + curr.value, 0);
+                });
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: last7Days,
+                        datasets: [
+                            { label: 'Receita', data: parkingRevenue, backgroundColor: '#0891b2', borderRadius: 4 },
+                            { label: 'Despesas', data: expensesData, backgroundColor: '#ef4444', borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top', labels: { color: '#cbd5e1', font: { size: 10 } } } },
+                        scales: {
+                            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+                        }
+                    }
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [historyData, financeData]);
+
+            return <div className="h-64 w-full"><canvas ref={canvasRef}></canvas></div>;
+        };
+
+        const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+
+        // --- LOGIN SCREEN ---
+        const LoginScreen = ({ onLogin }) => {
+            const [u, setU] = useState('');
+            const [p, setP] = useState('');
+            const [remember, setRemember] = useState(false);
+
+            useEffect(() => {
+                const savedUser = localStorage.getItem('parkingpro_saved_user');
+                const savedPass = localStorage.getItem('parkingpro_saved_pass');
+                if (savedUser && savedPass) { setU(savedUser); setP(savedPass); setRemember(true); }
+            }, []);
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden px-4">
+                    <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1506521781263-d8422e82f27a?q=80&w=2070&auto=format&fit=crop")', backgroundSize: 'cover', backgroundPosition: 'center'}}></div>
+                    <div className="bg-slate-900/90 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-sm z-10 border border-slate-800">
+                        <div className="flex justify-center mb-6"><BrandLogo /></div>
+                        <form onSubmit={(e) => {e.preventDefault(); onLogin(u, p, remember);}} className="space-y-4">
+                            <input className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white outline-none" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
+                            <input type="password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white outline-none" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
+                            <div className="flex items-center gap-2">
+                                <input type="checkbox" id="remember" checked={remember} onChange={e => setRemember(e.target.checked)} className="accent-cyan-600" />
+                                <label htmlFor="remember" className="text-sm text-slate-400">Lembrar senha</label>
+                            </div>
+                            <button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded">ABRIR SISTEMA</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP ---
+        function App() {
+            const [view, setView] = useState('login');
+            const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
+            const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
+
+            // Firebase Config State
+            const [firebaseConfigStr, setFirebaseConfigStr] = useState(() => localStorage.getItem('parkingpro_firebase_config') || '');
+            const [db, setDb] = useState(null);
+            const [isOnline, setIsOnline] = useState(false);
+
+            // App Data
+            const [tickets, setTickets] = useState([]);
+            const [history, setHistory] = useState([]);
+            const [subscribers, setSubscribers] = useState([]);
+            const [agreements, setAgreements] = useState([]);
+            const [finances, setFinances] = useState([]);
+            const [team, setTeam] = useState([]);
+            const [clients, setClients] = useState([]);
+            const [suppliers, setSuppliers] = useState([]);
+            const [servicesList, setServicesList] = useState([]);
+            const [config, setConfig] = useState({ name: 'Parking Center', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
+
+            // UI State
+            const [tab, setTab] = useState('dashboard');
+            const [modal, setModal] = useState(null);
+            const [activeTicket, setActiveTicket] = useState(null);
+            const [filterPlate, setFilterPlate] = useState('');
+            const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+            const [loadingCamera, setLoadingCamera] = useState(false);
+
+            // Edit IDs
+            const [editingServiceId, setEditingServiceId] = useState(null);
+            const [editingFinanceId, setEditingFinanceId] = useState(null);
+            const [editClient, setEditClient] = useState(null);
+            const [editSubscriber, setEditSubscriber] = useState(null);
+            const [editSupplier, setEditSupplier] = useState(null);
+
+            // Forms
+            const [entryForm, setEntryForm] = useState({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
+            const [editTicketForm, setEditTicketForm] = useState({ id: null, plate: '', model: '', type: 'Carro', notes: '' });
+            const [financeForm, setFinanceForm] = useState({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' });
+            const [serviceConfigForm, setServiceConfigForm] = useState({ name: '', price: 0 });
+            const [addServiceForm, setAddServiceForm] = useState({ ticketId: '', selectedServices: [] });
+            const [clientForm, setClientForm] = useState({ name: '', phone: '', plate: '', points: 0, notes: '' });
+            const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', category: 'Peças', notes: '' });
+            const [subscriberForm, setSubscriberForm] = useState({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true });
+            const [teamForm, setTeamForm] = useState({ name: '', role: 'Operador', shift: 'Manhã', phone: '' });
+            const [agreementForm, setAgreementForm] = useState({ name: '', discountType: 'free_time', value: 0 });
+            const [checklistForm, setChecklistForm] = useState({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' });
+            const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
+
+            const commonDamages = ['Arranhões', 'Amassados', 'Vidro Trincado', 'Farol Quebrado', 'Pneu Murcho', 'Antena Quebrada', 'Retrovisor Danif.'];
+            
+            const tabNames = { dashboard: 'Visão Geral', patio: 'Pátio & Entrada', carwash: 'Lava-rápido', finance: 'Financeiro', suppliers: 'Fornecedores', team: 'Equipe', clients: 'Fidelidade', subscribers: 'Mensalistas', agreements: 'Convênios', config: 'Configurações' };
+
+            // --- FIREBASE INIT ---
+            useEffect(() => {
+                if (firebaseConfigStr && !db) {
+                    try {
+                        let configObj;
+                        // Tenta extrair a config do meio do texto colado
+                        try {
+                            // Procura por const firebaseConfig = { ... }
+                            const match = firebaseConfigStr.match(/const\s+firebaseConfig\s*=\s*({[\s\S]*?});/);
+                            if (match && match[1]) {
+                                // Se achou, usa apenas o objeto JSON
+                                configObj = new Function("return " + match[1])();
+                            } else {
+                                // Se não achou a estrutura exata, tenta converter o texto inteiro se for um objeto solto
+                                const raw = firebaseConfigStr.trim();
+                                if (raw.startsWith('{')) {
+                                     configObj = new Function("return " + raw)();
+                                }
+                            }
+                        } catch(e) { console.error("Parse error", e); }
+
+                        // Se conseguiu extrair a config
+                        if (configObj && !firebase.apps.length) {
+                            firebase.initializeApp(configObj);
+                            const firestore = firebase.firestore();
+                            setDb(firestore);
+                            setIsOnline(true);
+                            notify('Conectado à nuvem!', 'success');
+                        }
+                    } catch (e) {
+                        console.error("Erro Firebase", e);
+                        notify('Erro na configuração. Cole o código completo.', 'error');
+                        setIsOnline(false);
+                    }
+                }
+            }, [firebaseConfigStr]);
+
+            // --- SYNC DATA HOOK ---
+            const useSync = (collectionName, setState, fallbackData) => {
+                useEffect(() => {
+                    if (db) {
+                        const unsubscribe = db.collection(collectionName).onSnapshot(snapshot => {
+                            const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })); // Use string ID from Firestore usually, but we handle numbers too
+                            // Simple mapping to ensure numeric IDs are handled if we used them as document keys or fields
+                            setState(data);
+                        }, err => console.error(`Sync error ${collectionName}`, err));
+                        return () => unsubscribe();
+                    } else if (view === 'app') {
+                        // LocalStorage Fallback
+                        const stored = localStorage.getItem(`parkingpro_${collectionName}`);
+                        if (stored) setState(JSON.parse(stored));
+                        else if (fallbackData) setState(fallbackData);
+                    }
+                }, [db, view]);
+            };
+
+            // Setup Sync for all collections
+            useSync('tickets', setTickets, []);
+            useSync('history', setHistory, []);
+            useSync('finances', setFinances, []);
+            useSync('subscribers', setSubscribers, []);
+            useSync('clients', setClients, []);
+            useSync('team', setTeam, []);
+            useSync('suppliers', setSuppliers, []);
+            useSync('servicesList', setServicesList, []);
+            useSync('agreements', setAgreements, []);
+            // Special case for single config doc, but treating as local for simplicity in this version mixed with LS
+            useEffect(() => {
+                const stored = localStorage.getItem('parkingpro_config');
+                if (stored) setConfig(JSON.parse(stored));
+            }, []);
+
+            // --- CRUD HELPERS (Hybrid) ---
+            const saveItem = async (col, item, idOverride) => {
+                const id = idOverride ? String(idOverride) : String(item.id || Date.now());
+                const itemToSave = { ...item, id: item.id || Date.now() }; // Ensure numeric ID inside data
+                
+                if (db) {
+                    try {
+                        await db.collection(col).doc(id).set(itemToSave);
+                    } catch(e) { notify('Erro ao salvar na nuvem', 'error'); }
+                } else {
+                    // Local Update Logic needs to know which state to update. 
+                    // To simplify, we rely on the fact that if DB is NOT present, the State is already updated by the specific handler function logic below.
+                    // This function is mainly for DB writes.
+                    // BUT: We need to manually update local state if offline to see changes immediately.
+                    // Implementation: The specific handlers below handle local state update. 
+                }
+            };
+
+            const deleteItem = async (col, id) => {
+                if (db) {
+                    await db.collection(col).doc(String(id)).delete();
+                }
+            };
+
+            // --- LOCAL STORAGE PERSISTENCE (Backup/Offline) ---
+            useEffect(() => {
+                if (view === 'app') {
+                    localStorage.setItem('parkingpro_tickets', JSON.stringify(tickets));
+                    localStorage.setItem('parkingpro_history', JSON.stringify(history));
+                    localStorage.setItem('parkingpro_finances', JSON.stringify(finances));
+                    localStorage.setItem('parkingpro_subscribers', JSON.stringify(subscribers));
+                    localStorage.setItem('parkingpro_clients', JSON.stringify(clients));
+                    localStorage.setItem('parkingpro_team', JSON.stringify(team));
+                    localStorage.setItem('parkingpro_suppliers', JSON.stringify(suppliers));
+                    localStorage.setItem('parkingpro_servicesList', JSON.stringify(servicesList));
+                    localStorage.setItem('parkingpro_agreements', JSON.stringify(agreements));
+                    localStorage.setItem('parkingpro_config', JSON.stringify(config));
+                }
+            }, [tickets, history, finances, subscribers, clients, team, suppliers, servicesList, agreements, config]);
+
+
+            // --- HANDLERS ---
+            
+            const handleLogin = (u, p, remember) => {
+                const storedCreds = localStorage.getItem('parkingpro_credentials');
+                const creds = storedCreds ? JSON.parse(storedCreds) : { user: 'admin', pass: '1234' };
+                if (u === creds.user && p === creds.pass) {
+                    if (remember) { localStorage.setItem('parkingpro_saved_user', u); localStorage.setItem('parkingpro_saved_pass', p); }
+                    else { localStorage.removeItem('parkingpro_saved_user'); localStorage.removeItem('parkingpro_saved_pass'); }
+                    setView('app');
+                } else { notify('Acesso negado.', 'error'); }
+            };
+
+            const handleFileScan = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setLoadingCamera(true); notify('Lendo placa...', 'info');
+                try {
+                    const { data: { text } } = await Tesseract.recognize(file, 'eng');
+                    const clean = text.replace(/[^A-Z0-9]/ig, '').toUpperCase();
+                    const match = clean.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/) || clean.match(/[A-Z]{3}[0-9]{4}/);
+                    if (match) { setEntryForm(p => ({ ...p, plate: match[0] })); notify(`Placa: ${match[0]}`); }
+                    else notify('Placa não identificada.', 'error');
+                } catch (err) { notify('Erro na leitura.', 'error'); }
+                finally { setLoadingCamera(false); }
+            };
+
+            const handleEntry = () => {
+                if (!entryForm.plate) return notify('Placa obrigatória', 'error');
+                const entryDate = entryForm.manualEntry ? new Date(entryForm.manualEntry) : new Date();
+                const isSub = subscribers.find(s => s.plate === entryForm.plate.toUpperCase() && s.active);
+                const newTicket = { 
+                    id: Date.now(), 
+                    plate: entryForm.plate.toUpperCase(), 
+                    model: entryForm.model, 
+                    type: entryForm.type, 
+                    entryTime: entryDate.toISOString(), 
+                    isSubscriber: !!isSub, 
+                    subscriberName: isSub ? isSub.name : null, 
+                    notes: entryForm.notes, 
+                    damages: entryForm.damages || [], 
+                    services: [], 
+                    status: 'active' 
+                };
+
+                if (entryForm.manualExit) {
+                    const exitDate = new Date(entryForm.manualExit);
+                    if (exitDate <= entryDate) return notify('Saída deve ser após entrada', 'error');
+                    const diffMins = Math.floor((exitDate - entryDate) / 60000);
+                    const diffHours = Math.ceil(diffMins / 60);
+                    let total = 0;
+                    if (!isSub) {
+                        if (diffMins > config.toleranceMin) {
+                            const rate = entryForm.type === 'Carro' ? config.priceCarHour : config.priceMotoHour;
+                            total = diffHours >= 8 ? config.dailyRate : diffHours * rate;
+                        }
+                    }
+                    const histItem = { ...newTicket, exitTime: exitDate.toISOString(), durationMins: diffMins, durationHours: diffHours, total, subTotal: total, paymentMethod: 'Dinheiro (Manual)', status: 'finished', isHistory: true };
+                    saveItem('history', histItem);
+                    if (!db) setHistory(p => [histItem, ...p]);
+                    setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
+                    notify('Histórico lançado!');
+                } else {
+                    saveItem('tickets', newTicket);
+                    if (!db) setTickets(p => [...p, newTicket]);
+                    setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
+                    setActiveTicket(newTicket);
+                    setModal('print_entry');
+                    notify('Entrada registrada!');
+                }
+            };
+
+            const prepareExit = (ticket) => {
+                const now = new Date();
+                const entry = new Date(ticket.entryTime);
+                const diffMins = Math.floor((now - entry) / 60000);
+                const diffHours = Math.ceil(diffMins / 60);
+                let parkingFee = 0;
+                if (!ticket.isSubscriber) {
+                    if (diffMins > config.toleranceMin) {
+                        const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour;
+                        parkingFee = diffHours >= 8 ? config.dailyRate : diffHours * rate;
+                    }
+                }
+                const servicesFee = (ticket.services || []).reduce((acc, s) => acc + s.price, 0);
+                const total = parkingFee + servicesFee;
+                setActiveTicket({ ...ticket, exitTime: now.toISOString(), durationMins: diffMins, durationHours: diffHours, parkingFee, servicesFee, subTotal: total, total, appliedAgreement: null });
+                setPaymentMethod('Dinheiro');
+                setModal('confirm_exit');
+            };
+
+            const confirmExit = () => {
+                const finishedTicket = { ...activeTicket, paymentMethod, status: 'finished', isHistory: true };
+                saveItem('history', finishedTicket);
+                deleteItem('tickets', activeTicket.id);
+                if (!db) {
+                    setTickets(p => p.filter(t => t.id !== activeTicket.id));
+                    setHistory(p => [finishedTicket, ...p]);
+                }
+                setModal('print_exit');
+                notify('Saída registrada!');
+            };
+
+            // Service Management
+            const handleAddServices = () => {
+                const t = tickets.find(t => t.id === addServiceForm.ticketId);
+                if (t) {
+                    const updated = { ...t, services: addServiceForm.selectedServices };
+                    saveItem('tickets', updated);
+                    if (!db) setTickets(p => p.map(tk => tk.id === t.id ? updated : tk));
+                    setModal(null); notify('Serviços salvos!');
+                }
+            };
+
+            const saveServiceConfig = () => {
+                if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error');
+                const price = parseFloat(serviceConfigForm.price);
+                if (editingServiceId) {
+                    const updated = { ...serviceConfigForm, id: editingServiceId, price };
+                    saveItem('servicesList', updated);
+                    if(!db) setServicesList(p => p.map(s => s.id === editingServiceId ? updated : s));
+                    setEditingServiceId(null); notify('Serviço atualizado!');
+                } else {
+                    const newS = { ...serviceConfigForm, id: Date.now(), price };
+                    saveItem('servicesList', newS);
+                    if(!db) setServicesList(p => [...p, newS]);
+                    notify('Serviço criado!');
+                }
+                setServiceConfigForm({ name: '', price: 0 });
+            };
+
+            const removeServiceConfig = (id) => {
+                deleteItem('servicesList', id);
+                if(!db) setServicesList(p => p.filter(s => s.id !== id));
+            };
+
+            // Finance
+            const saveFinance = () => {
+                const val = parseFloat(financeForm.value);
+                if (editingFinanceId) {
+                    const updated = { ...financeForm, id: editingFinanceId, value: val };
+                    saveItem('finances', updated);
+                    if(!db) setFinances(p => p.map(f => f.id === editingFinanceId ? updated : f));
+                    setEditingFinanceId(null); notify('Atualizado!');
+                } else {
+                    const newF = { ...financeForm, id: Date.now(), value: val };
+                    saveItem('finances', newF);
+                    if(!db) setFinances(p => [newF, ...p]);
+                    notify('Salvo!');
+                }
+                setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' });
+                setModal(null);
+            };
+            const handleDeleteFinance = (id) => { if(confirm('Excluir?')) { deleteItem('finances', id); if(!db) setFinances(p => p.filter(f => f.id !== id)); } };
+            const handleEditFinance = (item) => { setFinanceForm(item); setEditingFinanceId(item.id); setModal('finance'); };
+
+            // Generic Saves
+            const saveGeneric = (col, form, setForm, setList, editId, setEditId, idOverride=null) => {
+                const id = editId || idOverride || Date.now();
+                const item = { ...form, id };
+                saveItem(col, item);
+                if(!db) setList(p => editId ? p.map(i => i.id === id ? item : i) : [...p, item]);
+                if(setEditId) setEditId(null);
+                setModal(null); notify('Salvo com sucesso!');
+            };
+
+            // Ticket Editing
+            const saveTicketEdit = () => {
+                const t = tickets.find(x => x.id === editTicketForm.id);
+                if(t) {
+                    const updated = { ...t, ...editTicketForm };
+                    saveItem('tickets', updated);
+                    if(!db) setTickets(p => p.map(x => x.id === t.id ? updated : x));
+                    setModal(null); notify('Veículo atualizado');
+                }
+            };
+            const handleDeleteTicket = (id) => {
+                if(confirm('Remover do pátio?')) {
+                    deleteItem('tickets', id);
+                    if(!db) setTickets(p => p.filter(t => t.id !== id));
+                    notify('Veículo removido');
+                }
+            };
+
+            // Config Save
+            const saveConfig = () => {
+                if (firebaseConfigStr !== localStorage.getItem('parkingpro_firebase_config')) {
+                    localStorage.setItem('parkingpro_firebase_config', firebaseConfigStr);
+                    window.location.reload(); // Reload to init firebase
+                }
+                localStorage.setItem('parkingpro_config', JSON.stringify(config));
+                notify('Configurações salvas!');
+            };
+
+            const downloadDashboardReport = () => {
+                const content = `RELATÓRIO\nData: ${new Date().toLocaleDateString()}\nReceita: ${formatCurrency(stats.totalRevenue)}\nDespesas: ${formatCurrency(stats.expenses)}\n\nMOVIMENTAÇÕES:\n${history.slice(0,50).map(h=>`[${new Date(h.exitTime).toLocaleTimeString()}] ${h.plate} - ${formatCurrency(h.total)}`).join('\n')}`;
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], {type:'text/plain'})); a.download = 'relatorio.txt'; a.click();
+            };
+
+            const stats = useMemo(() => {
+                const occupied = tickets.length; const free = config.totalSpots - occupied;
+                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
+                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                return { occupied, free, totalRevenue: ticketsRevenue + extraRevenue, expenses, balance: (ticketsRevenue + extraRevenue) - expenses };
+            }, [tickets, history, finances, config]);
+
+            if (view === 'login') return <LoginScreen onLogin={handleLogin} />;
+
+            return (
+                <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
+                    <Toast {...toast} onClose={()=>setToast({...toast, show:false})} />
+                    {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>}
+
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 transition-transform duration-300 md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center"><BrandLogo /><button className="md:hidden" onClick={() => setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button></div>
+                        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                            {Object.keys(tabNames).map(k => (
+                                <button key={k} onClick={() => { setTab(k); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold ${tab === k ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                    <i className={`ph ph-${k === 'dashboard' ? 'gauge' : k === 'patio' ? 'car-profile' : k === 'carwash' ? 'drop-half' : k === 'finance' ? 'currency-dollar' : 'gear'}`}></i> {tabNames[k]}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 text-center text-xs text-slate-600 flex justify-center items-center gap-2">
+                            {isOnline ? <span className="text-emerald-500 flex items-center gap-1"><i className="ph-fill ph-cloud-check"></i> Online</span> : <span className="text-slate-500 flex items-center gap-1"><i className="ph-fill ph-cloud-slash"></i> Offline</span>}
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 flex flex-col overflow-hidden relative w-full">
+                        <header className="h-16 bg-slate-900/80 backdrop-blur border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-10">
+                            <div className="flex items-center gap-3"><button className="md:hidden" onClick={() => setIsMobileMenuOpen(true)}><i className="ph-bold ph-list text-2xl"></i></button><h2 className="text-lg md:text-xl font-bold uppercase">{tabNames[tab]}</h2></div>
+                            <div className="text-right"><p className="text-[10px] md:text-xs text-slate-400">Vagas</p><p className={`text-xl font-black ${stats.free < 5 ? 'text-red-500' : 'text-emerald-400'}`}>{stats.free} <span className="text-sm font-normal text-slate-500">/ {config.totalSpots}</span></p></div>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-900">
+                            {tab === 'dashboard' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl">Painel</h3><button onClick={downloadDashboardReport} className="bg-slate-700 px-4 py-2 rounded font-bold text-sm">Relatório</button></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-cyan-500"><p className="text-xs text-slate-400 font-bold uppercase">Ocupação</p><h3 className="text-3xl font-bold mt-2">{stats.occupied}</h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-emerald-500"><p className="text-xs text-slate-400 font-bold uppercase">Receita</p><h3 className="text-3xl font-bold text-emerald-400 mt-2">{formatCurrency(stats.totalRevenue)}</h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-red-500"><p className="text-xs text-slate-400 font-bold uppercase">Despesas</p><h3 className="text-3xl font-bold text-red-400 mt-2">{formatCurrency(stats.expenses)}</h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-blue-500"><p className="text-xs text-slate-400 font-bold uppercase">Balanço</p><h3 className="text-3xl font-bold text-blue-400 mt-2">{formatCurrency(stats.balance)}</h3></div>
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700"><ParkingChart historyData={history} financeData={finances} /></div>
+                                        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => (<div key={i} className={`aspect-square rounded flex items-center justify-center text-xs font-bold ${i < tickets.length ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>))}</div></div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'patio' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in h-full">
+                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 h-fit shadow-xl lg:order-1">
+                                        <h3 className="font-bold text-xl text-cyan-400 mb-6 flex items-center gap-2"><i className="ph-bold ph-gate"></i> Entrada</h3>
+                                        <div className="space-y-4">
+                                            <div className="flex gap-2"><input className="w-full bg-slate-900 border-2 border-slate-700 p-4 rounded text-2xl uppercase text-center font-mono" placeholder="ABC-1234" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} /><label className="bg-slate-700 p-3 rounded border-2 border-slate-600 flex items-center justify-center cursor-pointer"><i className="ph-bold ph-camera text-2xl"></i><input type="file" accept="image/*" className="hidden" onChange={handleFileScan} /></label></div>
+                                            <div className="flex bg-slate-900 rounded p-1"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-3 rounded font-bold ${entryForm.type==='Carro'?'bg-cyan-600':'text-slate-400'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-3 rounded font-bold ${entryForm.type==='Moto'?'bg-cyan-600':'text-slate-400'}`}>Moto</button></div>
+                                            <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded" placeholder="Modelo" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
+                                            <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-red-400 font-bold mb-2 uppercase flex items-center gap-1"><i className="ph-fill ph-warning"></i> Checklist Avaria</p><div className="grid grid-cols-2 gap-2 mb-2">{commonDamages.map(item => (<div key={item} className="flex items-center gap-2"><input type="checkbox" id={`dmg-${item}`} checked={entryForm.damages.includes(item)} onChange={e => { const newDamages = e.target.checked ? [...entryForm.damages, item] : entryForm.damages.filter(i => i !== item); setEntryForm({...entryForm, damages: newDamages}); }} className="accent-red-500 w-5 h-5" /><label htmlFor={`dmg-${item}`} className="text-xs text-slate-300 cursor-pointer">{item}</label></div>))}</div><input className="w-full bg-slate-800 border border-slate-600 p-3 rounded text-white text-xs" placeholder="Obs: Avaria específica..." value={entryForm.notes} onChange={e=>setEntryForm({...entryForm, notes:e.target.value})} /></div>
+                                            <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-slate-500 font-bold mb-2 uppercase">Ajuste Manual</p><div className="grid grid-cols-2 gap-2"><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualEntry} onChange={e=>setEntryForm({...entryForm, manualEntry:e.target.value})} /><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualExit} onChange={e=>setEntryForm({...entryForm, manualExit:e.target.value})} /></div></div>
+                                            <button onClick={handleEntry} className="w-full bg-cyan-600 py-4 rounded font-bold text-lg shadow-lg">Gerar Ticket</button>
+                                        </div>
+                                    </div>
+                                    <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700 lg:order-2 flex flex-col h-[80vh] lg:h-auto">
+                                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-xl">Pátio</h3><input className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" placeholder="Buscar placa..." value={filterPlate} onChange={e=>setFilterPlate(e.target.value.toUpperCase())} /></div>
+                                        <div className="flex-1 overflow-y-auto space-y-3">
+                                            {tickets.filter(t=>t.plate.includes(filterPlate)).map(t=>(<div key={t.id} className="bg-slate-900 p-4 rounded border border-slate-700 flex justify-between items-center"><div className="flex gap-4 items-center"><div className="p-3 bg-slate-800 rounded text-cyan-400"><i className="ph-fill ph-car text-2xl"></i></div><div><h4 className="font-bold text-xl font-mono">{t.plate}</h4><p className="text-sm text-slate-400">{t.model}</p></div></div><div className="flex gap-2"><button onClick={()=>{setChecklistForm({...checklistForm, plate:t.plate, model:t.model}); setModal('checklist');}} className="p-3 bg-slate-800 rounded text-slate-400"><i className="ph-bold ph-clipboard-text"></i></button><button onClick={()=>prepareExit(t)} className="px-4 py-2 bg-red-600 rounded font-bold">Saída</button></div></div>))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'carwash' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl">Lava-rápido</h3><button onClick={()=>{setServiceConfigForm({name:'', price:0}); setEditingServiceId(null); setModal('service_types');}} className="bg-cyan-600 px-4 py-2 rounded font-bold flex gap-2 items-center"><i className="ph-bold ph-gear"></i> Gerenciar Serviços</button></div>
+                                    <div className="grid gap-4">
+                                        {tickets.filter(t=>t.plate.includes(filterPlate)).map(t=>(<div key={t.id} className="bg-slate-800 p-4 rounded border border-slate-700 flex justify-between items-center"><div className="flex gap-4 items-center"><div className="p-3 bg-slate-700 rounded"><i className="ph-fill ph-car text-xl"></i></div><div><h4 className="font-bold font-mono">{t.plate}</h4><p className="text-xs text-slate-400">{t.model}</p></div></div><div className="flex-1 px-4"><div className="flex flex-wrap gap-2">{t.services?.map(s=><span key={s.id} className="text-xs bg-cyan-900 text-cyan-300 px-2 py-1 rounded">{s.name}</span>)}</div></div><div className="flex gap-2 items-center"><span className="font-bold text-emerald-400">{formatCurrency((t.services||[]).reduce((a,b)=>a+b.price,0))}</span><button onClick={()=>{setAddServiceForm({ticketId:t.id, selectedServices:t.services||[]}); setModal('service_manager');}} className="p-2 bg-blue-600 rounded"><i className="ph-bold ph-list-plus"></i></button><button onClick={()=>handleEditTicket(t)} className="p-2 bg-slate-600 rounded"><i className="ph-bold ph-pencil"></i></button><button onClick={()=>handleDeleteTicket(t.id)} className="p-2 bg-red-900/50 text-red-400 rounded"><i className="ph-bold ph-trash"></i></button></div></div>))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'finance' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl">Financeiro</h3><div className="flex gap-2"><button onClick={downloadBills} className="bg-slate-700 px-4 py-2 rounded font-bold">Relatório</button><button onClick={()=>{setEditingFinanceId(null); setFinanceForm({type:'Despesa', description:'', value:0, date:new Date().toISOString().split('T')[0], category:'Geral'}); setModal('finance');}} className="bg-emerald-600 px-4 py-2 rounded font-bold">Lançar</button></div></div>
+                                    <div className="bg-slate-800 rounded border border-slate-700 overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-900 text-xs uppercase text-slate-400"><tr><th className="p-4">Data</th><th className="p-4">Desc</th><th className="p-4">Cat</th><th className="p-4">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Anexo</th><th className="p-4 text-center">Ações</th></tr></thead><tbody className="divide-y divide-slate-700">{[...history.map(h=>({...h, date:h.exitTime, desc:`Ticket #${h.id} - ${h.plate}`, type:'Receita', cat:'Estacionamento', value:h.total})), ...finances.map(f=>({...f, desc:f.description, cat:f.category}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,100).map((i,idx)=>(<tr key={idx}><td className="p-4 text-slate-500">{new Date(i.date).toLocaleDateString()}</td><td className="p-4 font-bold">{i.desc}</td><td className="p-4 text-xs">{i.cat}</td><td className="p-4"><span className={`px-2 py-1 rounded text-xs ${i.type==='Receita'?'bg-emerald-500/20 text-emerald-400':'bg-red-500/20 text-red-400'}`}>{i.type}</span></td><td className={`p-4 text-right font-bold ${i.type==='Receita'?'text-emerald-400':'text-red-400'}`}>{formatCurrency(i.value)}</td><td className="p-4 text-center">{!i.isHistory && (<div className="flex justify-center gap-2"><button onClick={()=>handleEditFinance(i)} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button><button onClick={()=>handleDeleteFinance(i.id)} className="text-red-400"><i className="ph-bold ph-trash"></i></button></div>)}</td></tr>))}</tbody></table></div>
+                                </div>
+                            )}
+
+                            {tab === 'suppliers' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Fornecedores</h3>
+                                        <button onClick={() => {setEditSupplier(null); setSupplierForm({name:'', contact:'', category:'Peças', notes:''}); setModal('supplier_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Fornecedor</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {suppliers.map(supplier => (
+                                            <div key={supplier.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="mb-4 pr-12">
+                                                    <h4 className="font-bold text-white text-lg">{supplier.name}</h4>
+                                                    <p className="text-xs text-cyan-400 font-bold uppercase mt-1">{supplier.category}</p>
+                                                    <p className="text-sm text-slate-300 mt-2"><i className="ph-fill ph-phone"></i> {supplier.contact}</p>
+                                                    {supplier.notes && <p className="text-xs text-slate-500 mt-2 italic">"{supplier.notes}"</p>}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => {setEditSupplier(supplier); setSupplierForm(supplier); setModal('supplier_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button>
+                                                    <button onClick={() => {if(confirm('Excluir fornecedor?')) setSuppliers(prev => prev.filter(s => s.id !== supplier.id))}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'team' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Equipe</h3>
+                                        <button onClick={() => {setTeamForm({name:'', role:'Operador', shift:'Manhã', phone:''}); setModal('team');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-user-plus"></i> <span className="hidden md:inline">Novo Funcionário</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {team.map(member => (
+                                            <div key={member.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xl text-slate-300">{member.name.charAt(0)}</div>
+                                                <div>
+                                                    <h4 className="font-bold text-white">{member.name}</h4>
+                                                    <p className="text-sm text-cyan-400">{member.role}</p>
+                                                    <div className="text-xs text-slate-500 mt-1 flex gap-2">
+                                                        <span><i className="ph-fill ph-clock"></i> {member.shift}</span>
+                                                        <span><i className="ph-fill ph-phone"></i> {member.phone}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'clients' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Clientes & Fidelidade</h3>
+                                        <button onClick={() => {setEditClient(null); setClientForm({name:'', phone:'', plate:'', points: 0, notes:''}); setModal('client_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Cliente</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {clients.map(client => (
+                                            <div key={client.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="absolute top-0 right-0 p-3 bg-slate-900 rounded-bl-xl border-l border-b border-slate-700">
+                                                    <div className="text-center">
+                                                        <span className="text-2xl font-bold text-emerald-400 block leading-none">{client.points}</span>
+                                                        <span className="text-[9px] text-slate-500 uppercase font-bold">Pontos</span>
+                                                    </div>
+                                                </div>
+                                                <div className="mb-4 pr-12">
+                                                    <h4 className="font-bold text-white text-lg">{client.name}</h4>
+                                                    <p className="text-xs text-slate-400 mt-1"><i className="ph-fill ph-phone"></i> {client.phone}</p>
+                                                    <p className="text-xs text-slate-400"><i className="ph-fill ph-car"></i> {client.plate}</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => addPoints(client.id, 1)} className="flex-1 py-3 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded text-xs font-bold border border-emerald-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-plus"></i> 1 Ponto</button>
+                                                    <button onClick={() => {
+                                                        if(client.points >= 10) {
+                                                            if(confirm('Resgatar 10 pontos?')) addPoints(client.id, -10);
+                                                        } else {
+                                                            notify('Saldo insuficiente (Min: 10)', 'error');
+                                                        }
+                                                    }} className="flex-1 py-3 bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 rounded text-xs font-bold border border-violet-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-gift"></i> Resgatar</button>
+                                                    <button onClick={() => {setEditClient(client); setClientForm(client); setModal('client_manager');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"><i className="ph-bold ph-pencil"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'subscribers' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Mensalistas</h3>
+                                        <button onClick={() => {setEditSubscriber(null); setSubscriberForm({name:'', plate:'', model:'', plan:'Integral', dueDay: 10, active: true}); setModal('subscriber_manager');}} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Mensalista</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {subscribers.map(s => (
+                                            <div key={s.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="absolute top-0 right-0 p-2"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${s.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{s.active ? 'Ativo' : 'Inativo'}</span></div>
+                                                <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center font-bold text-white">{s.name.charAt(0)}</div><div><h4 className="font-bold text-white">{s.name}</h4><p className="text-xs text-slate-400">Vencimento dia {s.dueDay}</p></div></div>
+                                                <div className="bg-slate-900 p-3 rounded text-sm mb-3"><div className="flex justify-between mb-1"><span className="text-slate-500">Placa</span><span className="font-mono font-bold text-white">{s.plate}</span></div><div className="flex justify-between"><span className="text-slate-500">Modelo</span><span className="text-slate-300">{s.model}</span></div></div>
+                                                <div className="flex gap-2"><button onClick={() => {setEditSubscriber(s); setSubscriberForm(s); setModal('subscriber_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button><button onClick={() => {if(confirm('Excluir mensalista?')) setSubscribers(prev => prev.filter(sub => sub.id !== s.id))}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'agreements' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl text-white">Parcerias e Convênios</h3><button onClick={()=>setModal('new_agreement')} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Convênio</span></button></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {agreements.map(a => (
+                                            <div key={a.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+                                                <div><h4 className="font-bold text-white">{a.name}</h4><p className="text-sm text-slate-400">Benefício: <span className="text-cyan-400 font-bold">{a.discountType === 'free_time' ? `${a.value} min Grátis` : `${a.value}% de Desconto`}</span></p></div>
+                                                <button className="p-3 text-red-400 hover:bg-slate-700 rounded" onClick={()=>{ if(confirm('Remover?')) setAgreements(agreements.filter(i=>i.id!==a.id)); }}><i className="ph-bold ph-trash"></i></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'config' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="bg-slate-800 p-6 rounded border border-slate-700">
+                                        <h3 className="font-bold text-xl mb-4">Configurações Gerais</h3>
+                                        <div className="space-y-4">
+                                            <div><label className="text-xs text-slate-400 block mb-1">Nome Estacionamento</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div><label className="text-xs text-slate-400 block mb-1">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
+                                                <div><label className="text-xs text-slate-400 block mb-1">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
+                                            </div>
+                                            <div className="pt-4 border-t border-slate-700">
+                                                <label className="text-sm font-bold text-emerald-400 block mb-2 flex items-center gap-2"><i className="ph-fill ph-cloud-arrow-up"></i> Configuração do Firebase (JSON)</label>
+                                                <textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-xs font-mono h-32" placeholder='Cole aqui o JSON do Firebase: { apiKey: "...", ... }' value={firebaseConfigStr} onChange={e=>setFirebaseConfigStr(e.target.value)}></textarea>
+                                                <p className="text-[10px] text-slate-500 mt-1">Cole o código do Firebase (pode ser o snippet completo com 'const firebaseConfig').</p>
+                                            </div>
+                                            <button onClick={saveConfig} className="w-full bg-cyan-600 py-3 rounded font-bold">Salvar Configurações</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* MODALS */}
+                    {modal && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                            {modal === 'print_entry' && activeTicket && (<div className="bg-white text-black p-0 rounded shadow-2xl w-full md:w-[320px]"><div id="print-area" className="ticket-paper"><div className="font-bold text-lg uppercase mb-2">{config.name}</div><div className="text-xs">{config.address}</div><div className="ticket-divider"></div><div className="font-bold text-xl uppercase">TICKET</div><div className="text-3xl font-mono font-bold my-4">{activeTicket.plate}</div><div className="text-left text-sm mb-4"><div className="flex justify-between"><span>Entrada:</span><span>{new Date(activeTicket.entryTime).toLocaleString()}</span></div></div><div className="barcode mb-2"></div><div className="text-xs text-center">{activeTicket.id}</div></div><div className="p-4 bg-slate-100 flex gap-2 justify-center no-print"><button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">Imprimir</button><button onClick={()=>setModal(null)} className="bg-slate-600 text-white px-6 py-2 rounded font-bold">Fechar</button></div></div>)}
+                            
+                            {modal === 'print_exit' && activeTicket && (<div className="bg-white text-black p-0 rounded shadow-2xl w-full md:w-[320px]"><div id="print-area" className="ticket-paper"><div className="font-bold text-lg uppercase mb-2">{config.name}</div><div className="text-xs">{config.address}</div><div className="ticket-divider"></div><div className="font-bold text-xl uppercase">RECIBO</div><div className="text-left text-sm my-4 space-y-1"><div className="flex justify-between font-bold"><span>{activeTicket.plate}</span><span>R$ {formatCurrency(activeTicket.total)}</span></div><div className="flex justify-between"><span>Entrada:</span><span>{new Date(activeTicket.entryTime).toLocaleString()}</span></div><div className="flex justify-between"><span>Saída:</span><span>{new Date(activeTicket.exitTime).toLocaleString()}</span></div></div><div className="text-center text-xs mt-4">Obrigado!</div></div><div className="p-4 bg-slate-100 flex gap-2 justify-center no-print"><button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">Imprimir</button><button onClick={()=>setModal(null)} className="bg-slate-600 text-white px-6 py-2 rounded font-bold">Fechar</button></div></div>)}
+
+                            {modal === 'service_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700"><h3 className="text-xl font-bold mb-4">Adicionar Serviços</h3><div className="space-y-2 mb-6 max-h-60 overflow-y-auto">{servicesList.map(s=>{const sel=addServiceForm.selectedServices.find(x=>x.id===s.id);return(<div key={s.id} onClick={()=>toggleServiceSelection(s.id)} className={`p-3 rounded border cursor-pointer flex justify-between ${sel?'bg-cyan-900 border-cyan-500':'bg-slate-900 border-slate-700'}`}><span>{s.name}</span><span className="font-bold text-emerald-400">{formatCurrency(s.price)}</span></div>)})}</div><div className="flex gap-2 justify-end"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleAddServices} className="bg-cyan-600 text-white px-4 py-2 rounded font-bold">Salvar</button></div></div>
+                            )}
+
+                            {modal === 'service_types' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700"><h3 className="text-xl font-bold mb-4">Gerenciar Tipos</h3><div className="flex gap-2 mb-4"><input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" placeholder="Nome" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} /><input className="w-24 bg-slate-900 border border-slate-700 p-3 rounded" type="number" placeholder="R$" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} /><button onClick={saveServiceConfig} className="bg-emerald-600 px-4 rounded font-bold"><i className="ph-bold ph-plus"></i></button></div><div className="space-y-2 max-h-60 overflow-y-auto">{servicesList.map(s=>(<div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded border border-slate-700"><span>{s.name}</span><div className="flex gap-2 items-center"><span className="text-emerald-400 font-bold">{formatCurrency(s.price)}</span><button onClick={()=>{setServiceConfigForm({name:s.name, price:s.price}); setEditingServiceId(s.id);}} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button><button onClick={()=>removeServiceConfig(s.id)} className="text-red-400"><i className="ph-bold ph-trash"></i></button></div></div>))}</div><button onClick={()=>setModal(null)} className="mt-4 w-full bg-slate-700 py-2 rounded">Fechar</button></div>
+                            )}
+
+                            {modal === 'edit_ticket' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700"><h3 className="text-xl font-bold mb-4">Editar Veículo</h3><div className="space-y-3"><div className="flex gap-2"><input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" value={editTicketForm.plate} onChange={e=>setEditTicketForm({...editTicketForm, plate:e.target.value})} /><select className="bg-slate-900 border border-slate-700 p-3 rounded" value={editTicketForm.type} onChange={e=>setEditTicketForm({...editTicketForm, type:e.target.value})}><option>Carro</option><option>Moto</option></select></div><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={editTicketForm.model} onChange={e=>setEditTicketForm({...editTicketForm, model:e.target.value})} /><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded h-20" value={editTicketForm.notes} onChange={e=>setEditTicketForm({...editTicketForm, notes:e.target.value})}></textarea></div><div className="flex justify-end gap-2 mt-4"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveTicketEdit} className="bg-cyan-600 text-white px-4 py-2 rounded font-bold">Salvar</button></div></div>
+                            )}
+
+                            {modal === 'finance' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700"><h3 className="text-xl font-bold mb-4">{editingFinanceId?'Editar':'Novo'} Lançamento</h3><div className="space-y-3"><div className="flex gap-2"><select className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option>Receita</option><option>Despesa</option></select><input type="date" className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" value={financeForm.date} onChange={e=>setFinanceForm({...financeForm, date:e.target.value})} /></div><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded" placeholder="Descrição" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} /><div className="flex gap-2"><input type="number" className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" placeholder="Valor" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} /><input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded" placeholder="Categoria" value={financeForm.category} onChange={e=>setFinanceForm({...financeForm, category:e.target.value})} /></div></div><div className="flex justify-end gap-2 mt-4"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveFinance} className="bg-emerald-600 text-white px-4 py-2 rounded font-bold">Confirmar</button></div></div>
+                            )}
+
+                            {modal === 'checklist' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700"><h3 className="text-xl font-bold mb-4">Vistoria</h3><div className="space-y-4"><div className="grid grid-cols-2 gap-2"><input className="bg-slate-900 border border-slate-700 p-3 rounded" value={checklistForm.plate} onChange={e=>setChecklistForm({...checklistForm, plate:e.target.value})} /><input className="bg-slate-900 border border-slate-700 p-3 rounded" value={checklistForm.model} onChange={e=>setChecklistForm({...checklistForm, model:e.target.value})} /></div><div className="grid grid-cols-2 gap-2">{commonDamages.map(d=>(<div key={d} className="flex gap-2 items-center"><input type="checkbox" checked={checklistForm.items.includes(d)} onChange={e=>{if(e.target.checked)setChecklistForm({...checklistForm,items:[...checklistForm.items,d]});else setChecklistForm({...checklistForm,items:checklistForm.items.filter(x=>x!==d)})}} /><label>{d}</label></div>))}</div><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded h-20" placeholder="Obs..." value={checklistForm.notes} onChange={e=>setChecklistForm({...checklistForm, notes:e.target.value})}></textarea></div><div className="flex justify-end gap-2 mt-4"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveChecklist} className="bg-cyan-600 text-white px-4 py-2 rounded font-bold">Salvar</button></div></div>
+                            )}
+
+                            {modal === 'confirm_exit' && activeTicket && (
+                                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 w-full max-w-sm"><h3 className="text-xl font-bold mb-4">Saída</h3><div className="bg-slate-900 p-4 rounded mb-4"><div className="flex justify-between text-lg font-mono font-bold"><span>{activeTicket.plate}</span><span>{activeTicket.durationHours}h {activeTicket.durationMins%60}m</span></div><div className="my-2 border-t border-slate-700"></div><div className="flex justify-between"><span>Estacionamento</span><span>{formatCurrency(activeTicket.parkingFee)}</span></div><div className="flex justify-between"><span>Serviços</span><span>{formatCurrency(activeTicket.servicesFee)}</span></div><div className="flex justify-between text-xl font-bold mt-2 text-emerald-400"><span>TOTAL</span><span>{formatCurrency(activeTicket.total)}</span></div></div><div className="flex justify-end gap-2"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={confirmExit} className="bg-emerald-600 text-white px-6 py-2 rounded font-bold">Receber</button></div></div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
