@@ -31,23 +31,70 @@
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* Scrollbar Dark */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #020617; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Animações */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        
+        /* Estilos de Impressão (Tickets) */
         @media print {
             body * { visibility: hidden; }
             #print-area, #print-area * { visibility: visible; }
             #print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; color: black; }
             .no-print { display: none !important; }
         }
-        .ticket-paper { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; background: #fff; color: #000; padding: 10px; text-align: center; border: 1px dashed #ccc; }
+
+        /* Ticket Style (Papel Térmico) */
+        .ticket-paper {
+            font-family: 'Courier New', Courier, monospace;
+            width: 300px; /* Largura padrão impressora térmica */
+            margin: 0 auto;
+            background: #fff;
+            color: #000;
+            padding: 10px;
+            text-align: center;
+            border: 1px dashed #ccc;
+        }
+
         .ticket-divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-        .os-paper { font-family: 'Arial', sans-serif; width: 100%; background: #fff; color: #000; padding: 20px; border: 1px solid #000; }
-        .barcode { height: 40px; width: 100%; background-image: linear-gradient(90deg, #000 2%, transparent 2%, transparent 4%, #000 4%, #000 5%, transparent 5%, transparent 6%, #000 6%, #000 8%, transparent 8%, transparent 9%, #000 9%, #000 12%, transparent 12%, transparent 13%, #000 13%, #000 15%, transparent 15%, transparent 16%, #000 16%, #000 19%, transparent 19%, transparent 20%, #000 20%, #000 23%, transparent 23%, transparent 24%, #000 24%, #000 25%, transparent 25%, transparent 26%, #000 26%, #000 29%, transparent 29%, transparent 30%, #000 30%, #000 31%, transparent 31%, transparent 32%, #000 32%, #000 35%, transparent 35%, transparent 36%, #000 36%, #000 38%, transparent 38%, transparent 39%, #000 39%, #000 42%, transparent 42%, transparent 43%, #000 43%, #000 45%, transparent 45%, transparent 46%, #000 46%); background-size: 100% 100%; }
-        input[type="datetime-local"]::-webkit-calendar-picker-indicator, input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+        /* Estilo Ordem de Serviço A4/A5 */
+        .os-paper {
+            font-family: 'Arial', sans-serif;
+            width: 100%;
+            background: #fff;
+            color: #000;
+            padding: 20px;
+            border: 1px solid #000;
+        }
+
+        /* Código de Barras CSS Simples */
+        .barcode {
+            height: 40px;
+            width: 100%;
+            background-image: linear-gradient(90deg, 
+                #000 2%, transparent 2%, transparent 4%, #000 4%, #000 5%, transparent 5%, transparent 6%, #000 6%, 
+                #000 8%, transparent 8%, transparent 9%, #000 9%, #000 12%, transparent 12%, transparent 13%, #000 13%, 
+                #000 15%, transparent 15%, transparent 16%, #000 16%, #000 19%, transparent 19%, transparent 20%, #000 20%,
+                #000 23%, transparent 23%, transparent 24%, #000 24%, #000 25%, transparent 25%, transparent 26%, #000 26%,
+                #000 29%, transparent 29%, transparent 30%, #000 30%, #000 31%, transparent 31%, transparent 32%, #000 32%,
+                #000 35%, transparent 35%, transparent 36%, #000 36%, #000 38%, transparent 38%, transparent 39%, #000 39%,
+                #000 42%, transparent 42%, transparent 43%, #000 43%, #000 45%, transparent 45%, transparent 46%, #000 46%
+            );
+            background-size: 100% 100%;
+        }
+        
+        /* Custom Input Date Dark Mode */
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator, input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -56,10 +103,10 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- COMPONENTE TOAST (Notificações) ---
+        // --- COMPONENTE TOAST ---
         const Toast = ({ message, type, show, onClose }) => {
             if (!show) return null;
-            const colors = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-cyan-600');
+            const colors = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : (type === 'info' ? 'bg-blue-600' : 'bg-cyan-600'));
             return (
                 <div className={`fixed top-4 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-4 ${colors} text-white px-6 py-4 rounded-lg shadow-2xl z-[70] flex items-center gap-3 animate-fade-in w-[90%] md:w-auto`}>
                     <i className="ph-fill ph-info text-xl"></i>
@@ -68,7 +115,7 @@
             );
         };
 
-        // --- CHART COMPONENT ---
+        // --- COMPONENTE CHART ---
         const ParkingChart = ({ historyData, financeData }) => {
             const canvasRef = useRef(null);
             const chartRef = useRef(null);
@@ -78,6 +125,7 @@
                 if (chartRef.current) chartRef.current.destroy();
 
                 const ctx = canvasRef.current.getContext('2d');
+                
                 const last7Days = [...Array(7)].map((_, i) => {
                     const d = new Date();
                     d.setDate(d.getDate() - i);
@@ -85,13 +133,13 @@
                 }).reverse();
 
                 const parkingRevenue = last7Days.map(date => {
-                    return (Array.isArray(historyData) ? historyData : []).filter(h => h && h.exitTime && new Date(h.exitTime).toLocaleDateString('pt-BR') === date)
-                                .reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+                    return historyData.filter(h => new Date(h.exitTime).toLocaleDateString('pt-BR') === date)
+                                .reduce((acc, curr) => acc + curr.total, 0);
                 });
 
                 const expensesData = last7Days.map(date => {
-                    return (Array.isArray(financeData) ? financeData : []).filter(f => f && f.type === 'Despesa' && f.date && new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR') === date)
-                                .reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+                    return financeData.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR') === date)
+                                .reduce((acc, curr) => acc + curr.value, 0);
                 });
 
                 chartRef.current = new Chart(ctx, {
@@ -103,8 +151,17 @@
                             { label: 'Despesas', data: expensesData, backgroundColor: '#ef4444', borderRadius: 4 }
                         ]
                     },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top', labels: { color: '#cbd5e1', font: { size: 10 } } } },
+                        scales: {
+                            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+                        }
+                    }
                 });
+
                 return () => { if (chartRef.current) chartRef.current.destroy(); };
             }, [historyData, financeData]);
 
@@ -112,42 +169,73 @@
         };
 
         const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
-        const BrandLogo = () => (<div className="flex items-center gap-2"><div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded flex items-center justify-center shadow-lg"><i className="ph-fill ph-car text-white text-xl md:text-2xl"></i></div><div><h1 className="text-lg md:text-xl font-black italic text-white leading-none">PARKING<span className="text-cyan-400">PRO</span></h1></div></div>);
+        const formatDate = (date) => new Date(date).toLocaleString('pt-BR');
 
-        // --- LOGIN SCREEN ---
+        const BrandLogo = () => (
+            <div className="flex items-center gap-2">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded flex items-center justify-center shadow-lg shadow-cyan-900/50">
+                    <i className="ph-fill ph-car text-white text-xl md:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 className="text-lg md:text-xl font-black italic tracking-tighter text-white leading-none">PARKING<span className="text-cyan-400">PRO</span></h1>
+                    <p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Sistema Inteligente</p>
+                </div>
+            </div>
+        );
+
+        // --- TELA DE LOGIN ---
         const LoginScreen = ({ onLogin }) => {
             const [u, setU] = useState('');
             const [p, setP] = useState('');
+            const [remember, setRemember] = useState(false);
+
             useEffect(() => {
-                const user = localStorage.getItem('parkingpro_user');
-                const pass = localStorage.getItem('parkingpro_pass');
-                if (user && pass) { setU(user); setP(pass); }
+                const savedUser = localStorage.getItem('parkingpro_saved_user');
+                const savedPass = localStorage.getItem('parkingpro_saved_pass');
+                if (savedUser && savedPass) {
+                    setU(savedUser);
+                    setP(savedPass);
+                    setRemember(true);
+                }
             }, []);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onLogin(u, p, remember);
+            };
+
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
-                    <div className="bg-slate-900 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-800">
+                <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden px-4">
+                    <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1506521781263-d8422e82f27a?q=80&w=2070&auto=format&fit=crop")', backgroundSize: 'cover', backgroundPosition: 'center'}}></div>
+                    <div className="bg-slate-900/90 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-sm z-10 border border-slate-800">
                         <div className="flex justify-center mb-6"><BrandLogo /></div>
-                        <form onSubmit={(e) => {e.preventDefault(); onLogin(u, p, true);}} className="space-y-4">
-                            <input className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
-                            <input type="password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
-                            <button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded">ABRIR SISTEMA</button>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <input className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white focus:border-cyan-500 outline-none transition" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
+                            <input type="password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-white focus:border-cyan-500 outline-none transition" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
+                            <div className="flex items-center gap-2">
+                                <input type="checkbox" id="remember" checked={remember} onChange={e => setRemember(e.target.checked)} className="w-4 h-4 accent-cyan-600 rounded cursor-pointer" />
+                                <label htmlFor="remember" className="text-sm text-slate-400 cursor-pointer select-none">Lembrar senha</label>
+                            </div>
+                            <button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/20 active:scale-95">ABRIR SISTEMA</button>
                         </form>
-                        <div className="text-center mt-4 text-xs text-slate-500">Admin / 1234</div>
+                        <div className="mt-4 text-center text-xs text-slate-600">Admin / 1234</div>
                     </div>
                 </div>
             );
         };
 
-        // --- MAIN APP ---
+        // --- APP ---
         function App() {
             const [view, setView] = useState('login');
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
-            const notify = (msg, type='success') => { 
-                setToast(prev => ({ ...prev, show: true, msg, type })); 
-                setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000); 
-            };
+            const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
-            // SUA CONFIGURAÇÃO DO FIREBASE (FIXA)
+            const [credentials, setCredentials] = useState(() => {
+                const storedCreds = localStorage.getItem('parkingpro_credentials');
+                return storedCreds ? JSON.parse(storedCreds) : { user: 'admin', pass: '1234' };
+            });
+
+            // CONFIGURAÇÃO DO FIREBASE EMBUTIDA
             const FIREBASE_CONFIG = {
                 apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                 authDomain: "estacionamento-332eb.firebaseapp.com",
@@ -160,409 +248,1042 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            // Dados
-            const [tickets, setTickets] = useState([]);
-            const [history, setHistory] = useState([]);
-            const [finances, setFinances] = useState([]);
-            const [subscribers, setSubscribers] = useState([]);
-            const [clients, setClients] = useState([]);
-            const [team, setTeam] = useState([]);
-            const [suppliers, setSuppliers] = useState([]);
-            const [servicesList, setServicesList] = useState([]);
-            const [agreements, setAgreements] = useState([]);
-            const [config, setConfig] = useState({ name: 'Estacionamento', totalSpots: 50, priceCarHour: 10, priceMotoHour: 5, toleranceMin: 15, dailyRate: 50 });
+            const [config, setConfig] = useState({ name: 'Parking Center', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
 
-            // UI
+            const [tickets, setTickets] = useState([]); 
+            const [history, setHistory] = useState([]); 
+            const [subscribers, setSubscribers] = useState([]); 
+            const [agreements, setAgreements] = useState([]); 
+            const [checklists, setChecklists] = useState([]); 
+            const [finances, setFinances] = useState([]); 
+            const [team, setTeam] = useState([]); 
+            const [clients, setClients] = useState([]); 
+            const [suppliers, setSuppliers] = useState([]); 
+            const [servicesList, setServicesList] = useState([]);
+
             const [tab, setTab] = useState('dashboard');
             const [modal, setModal] = useState(null);
-            const [activeTicket, setActiveTicket] = useState(null);
+            const [activeTicket, setActiveTicket] = useState(null); 
             const [filterPlate, setFilterPlate] = useState('');
-            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+            const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+            const [editClient, setEditClient] = useState(null);
+            const [editSubscriber, setEditSubscriber] = useState(null);
+            const [editSupplier, setEditSupplier] = useState(null);
+            const [editingServiceId, setEditingServiceId] = useState(null);
+            const [editingFinanceId, setEditingFinanceId] = useState(null);
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
             const [loadingCamera, setLoadingCamera] = useState(false);
 
             // Formulários
             const [entryForm, setEntryForm] = useState({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
-            const [financeForm, setFinanceForm] = useState({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral' });
-            const [clientForm, setClientForm] = useState({ name: '', phone: '', plate: '', points: 0, notes: '' });
-            const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', category: 'Peças', notes: '' });
+            const [editTicketForm, setEditTicketForm] = useState({ id: null, plate: '', model: '', type: 'Carro', notes: '' });
+            const [agreementForm, setAgreementForm] = useState({ name: '', discountType: 'free_time', value: 0 });
+            const [checklistForm, setChecklistForm] = useState({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' });
+            const [financeForm, setFinanceForm] = useState({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' });
             const [teamForm, setTeamForm] = useState({ name: '', role: 'Operador', shift: 'Manhã', phone: '' });
             const [serviceConfigForm, setServiceConfigForm] = useState({ name: '', price: 0 });
-            const [agreementForm, setAgreementForm] = useState({ name: '', discountType: 'free_time', value: 0 });
-            const [checklistForm, setChecklistForm] = useState({ plate: '', model: '', fuel: '1/2', items: [], notes: '' });
+            const [addServiceForm, setAddServiceForm] = useState({ ticketId: '', selectedServices: [] });
+            const [clientForm, setClientForm] = useState({ name: '', phone: '', plate: '', points: 0, notes: '' });
+            const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', category: 'Peças', notes: '' });
             const [subscriberForm, setSubscriberForm] = useState({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true });
-            
-            // Edição
-            const [editingId, setEditingId] = useState(null);
-            const [editTicketForm, setEditTicketForm] = useState(null);
-            const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
-            const [addServiceForm, setAddServiceForm] = useState({ ticketId: null, selectedServices: [] });
+            const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
 
             const commonDamages = ['Arranhões', 'Amassados', 'Vidro Trincado', 'Farol Quebrado', 'Pneu Murcho', 'Antena Quebrada', 'Retrovisor Danif.'];
-            const tabNames = { dashboard: 'Visão Geral', patio: 'Pátio & Entrada', carwash: 'Lava-rápido', finance: 'Financeiro', suppliers: 'Fornecedores', team: 'Equipe', clients: 'Fidelidade', subscribers: 'Mensalistas', agreements: 'Convênios', config: 'Configurações' };
 
-            // Inicialização Firebase
+            const tabNames = {
+                dashboard: 'Visão Geral',
+                patio: 'Pátio & Entrada',
+                carwash: 'Lava-rápido',
+                finance: 'Financeiro',
+                suppliers: 'Fornecedores',
+                team: 'Equipe',
+                clients: 'Fidelidade',
+                subscribers: 'Mensalistas',
+                agreements: 'Convênios',
+                config: 'Configurações'
+            };
+
+            // DATA SEEDING
+            const getDemoData = () => {
+                const demoTickets = [
+                    { id: 1715430001, plate: 'ABC-1234', model: 'VW Gol', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 15).toISOString(), isSubscriber: false, damages: [], services: [], status: 'active' },
+                    { id: 1715430002, plate: 'XYZ-9090', model: 'Honda CB 500', type: 'Moto', entryTime: new Date(Date.now() - 1000 * 60 * 45).toISOString(), isSubscriber: false, damages: [], services: [], status: 'active' },
+                    { id: 1715430003, plate: 'MMM-5555', model: 'Jeep Compass', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 120).toISOString(), isSubscriber: true, subscriberName: 'Dr. Roberto', damages: [], services: [{id:1, name:'Lavagem Simples', price:40}], status: 'active' },
+                    { id: 1715430004, plate: 'BMW-0001', model: 'BMW X1', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 180).toISOString(), isSubscriber: false, damages: [], services: [{id:2, name:'Lavagem Completa + Cera', price:80}], status: 'active' },
+                    { id: 1715430005, plate: 'OAB-1010', model: 'Honda Civic', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 200).toISOString(), isSubscriber: false, damages: ['Arranhões'], services: [], status: 'active' },
+                    { id: 1715430006, plate: 'LUA-8888', model: 'Honda Titan', type: 'Moto', entryTime: new Date(Date.now() - 1000 * 60 * 240).toISOString(), isSubscriber: false, damages: [], services: [], status: 'active' },
+                    { id: 1715430007, plate: 'RST-4567', model: 'Jeep Renegade', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 300).toISOString(), isSubscriber: true, subscriberName: 'Empresa Tech', damages: [], services: [], status: 'active' },
+                    { id: 1715430008, plate: 'FGH-1122', model: 'Hyundai HB20', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 320).toISOString(), isSubscriber: false, isLoyalty: true, loyaltyClientId: 1, damages: [], services: [], status: 'active' },
+                    { id: 1715430009, plate: 'VWB-2020', model: 'VW Polo', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 360).toISOString(), isSubscriber: false, damages: [], services: [{id:4, name:'Polimento', price:250}], status: 'active' },
+                    { id: 1715430010, plate: 'USA-9999', model: 'Toyota Hilux', type: 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 400).toISOString(), isSubscriber: true, subscriberName: 'Construtora Forte', damages: [], services: [], status: 'active' },
+                ];
+                const demoHistory = Array.from({length: 40}).map((_, i) => ({ id: 1715000000 + i, plate: `DEM${1000+i}`, model: 'Veículo Histórico', type: i % 3 === 0 ? 'Moto' : 'Carro', entryTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * (i%7 + 1) - 1000*60*60*2).toISOString(), exitTime: new Date(Date.now() - 1000 * 60 * 60 * 24 * (i%7 + 1)).toISOString(), durationHours: 2, durationMins: 120, total: i % 3 === 0 ? 15 : 35, paymentMethod: i % 2 === 0 ? 'Dinheiro' : 'Cartão', isSubscriber: false, isHistory: true }));
+                const demoFinances = [ {id: 1, type: 'Despesa', description: 'Aluguel do Pátio', value: 2500, date: new Date().toISOString(), category: 'Fixo'}, {id: 2, type: 'Despesa', description: 'Energia Elétrica', value: 450, date: new Date().toISOString(), category: 'Utilidades'}, {id: 3, type: 'Despesa', description: 'Água', value: 120, date: new Date().toISOString(), category: 'Utilidades'}, {id: 4, type: 'Despesa', description: 'Produtos de Limpeza', value: 300, date: new Date(Date.now() - 86400000).toISOString(), category: 'Insumos'}, {id: 5, type: 'Receita', description: 'Venda de Óleo', value: 150, date: new Date().toISOString(), category: 'Vendas'} ];
+                const demoSubscribers = [ {id: 1, name: 'Empresa TechSolutions', plate: 'TEC2024', model: 'Frota Diversa', plan: 'Integral', dueDay: 5, active: true}, {id: 2, name: 'Dr. Roberto', plate: 'JEE2P22', model: 'Jeep Compass', plan: 'Integral', dueDay: 10, active: true}, {id: 3, name: 'Sra. Cláudia', plate: 'FIT2015', model: 'Honda Fit', plan: 'Diurno', dueDay: 15, active: true}, {id: 4, name: 'Sr. Antonio', plate: 'COR9988', model: 'Toyota Corolla', plan: 'Noturno', dueDay: 20, active: false} ];
+                const demoClients = [ {id: 1, name: 'Carlos Eduardo', phone: '(11) 91234-5678', plate: 'ABC1D23', points: 8, notes: 'Cliente frequente'}, {id: 2, name: 'Fernanda Lima', phone: '(11) 92345-6789', plate: 'FER2023', points: 3, notes: ''}, {id: 3, name: 'Roberto Justos', phone: '(11) 93456-7890', plate: 'VIP0001', points: 15, notes: 'Cliente VIP'} ];
+                return { demoTickets, demoHistory, demoFinances, demoSubscribers, demoClients };
+            };
+
+            // --- FIREBASE INIT ---
             useEffect(() => {
                 if (!firebase.apps.length) {
                     try {
                         firebase.initializeApp(FIREBASE_CONFIG);
-                        setDb(firebase.firestore());
+                        const firestore = firebase.firestore();
+                        setDb(firestore);
                         setIsOnline(true);
-                    } catch (e) { console.error("Erro Firebase", e); setIsOnline(false); }
+                    } catch (e) {
+                        console.error("Erro Firebase", e);
+                        setIsOnline(false);
+                    }
                 } else {
-                    setDb(firebase.firestore());
+                    const firestore = firebase.firestore();
+                    setDb(firestore);
                     setIsOnline(true);
                 }
             }, []);
 
-            // Hook de Sincronização
-            const useSync = (colName, setFn) => {
+            // --- SYNC DATA HOOK ---
+            const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
                     if (db) {
-                        return db.collection(colName).onSnapshot(snap => {
-                            const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-                            setFn(data);
-                        }, err => console.log("Sync wait/offline", err));
+                        const unsubscribe = db.collection(collectionName).onSnapshot(snapshot => {
+                            const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })); 
+                            setState(data);
+                        }, err => console.error(`Sync error ${collectionName}`, err));
+                        return () => unsubscribe();
                     } else if (view === 'app') {
-                        try {
-                            const local = localStorage.getItem(`parkingpro_${colName}`);
-                            if (local) setFn(JSON.parse(local));
-                        } catch(e) { console.error("Erro localStorage", e); }
+                        // LocalStorage Fallback
+                        const stored = localStorage.getItem(`parkingpro_${collectionName}`);
+                        if (stored) setState(JSON.parse(stored));
+                        else if (fallbackData) setState(fallbackData);
                     }
                 }, [db, view]);
             };
 
-            // Sincronizar todas as coleções
-            useSync('tickets', setTickets);
-            useSync('history', setHistory);
-            useSync('finances', setFinances);
-            useSync('subscribers', setSubscribers);
-            useSync('clients', setClients);
-            useSync('team', setTeam);
-            useSync('suppliers', setSuppliers);
-            useSync('servicesList', setServicesList);
-            useSync('agreements', setAgreements);
-
+            // Setup Sync for all collections
+            useSync('tickets', setTickets, []);
+            useSync('history', setHistory, []);
+            useSync('finances', setFinances, []);
+            useSync('subscribers', setSubscribers, []);
+            useSync('clients', setClients, []);
+            useSync('team', setTeam, []);
+            useSync('suppliers', setSuppliers, []);
+            useSync('servicesList', setServicesList, []);
+            useSync('agreements', setAgreements, []);
+            
+            // Initial Local Load for Config
             useEffect(() => {
-                const savedConfig = localStorage.getItem('parkingpro_config');
-                if (savedConfig) try { setConfig(JSON.parse(savedConfig)); } catch(e){}
+                const stored = localStorage.getItem('parkingpro_config');
+                if (stored) setConfig(JSON.parse(stored));
+                else {
+                     const { demoTickets, demoHistory, demoFinances, demoSubscribers, demoClients } = getDemoData();
+                     // Only seed if no data (local or db will overwrite this via sync if exists)
+                     // But sync is async, so this is just initial state before sync kicks in.
+                     // To avoid flicker or override, we trust useSync.
+                     // We just ensure we have config.
+                }
             }, []);
 
-            // Salvar Universal
-            const saveItem = async (col, item, idOverwrite) => {
-                const id = idOverwrite ? String(idOverwrite) : String(item.id || Date.now());
-                const data = { ...item, id: id };
+            // --- CRUD HELPERS (Hybrid) ---
+            const saveItem = async (col, item, idOverride) => {
+                const id = idOverride ? String(idOverride) : String(item.id || Date.now());
+                const itemToSave = { ...item, id: item.id || Date.now() }; 
                 
-                // Atualização Otimista (Visual)
-                if (!db) {
-                    // Se offline, salvar no localStorage via Effect dos dados
-                    // Aqui apenas atualizamos o estado local para parecer rápido
-                    // (O Effect de localStorage fará a persistência real)
-                }
-
                 if (db) {
                     try {
-                        await db.collection(col).doc(id).set(data);
-                    } catch (e) { notify('Erro ao salvar na nuvem (mas salvo local)', 'error'); }
+                        await db.collection(col).doc(id).set(itemToSave);
+                    } catch(e) { notify('Erro ao salvar na nuvem', 'error'); }
+                } else {
+                    // Local updates are handled by state updates in the specific handlers + useEffect persistence
                 }
-                return data;
             };
 
             const deleteItem = async (col, id) => {
-                if (db) await db.collection(col).doc(String(id)).delete();
-            };
-
-            // LocalStorage Backup
-            useEffect(() => {
-                if(view === 'app') {
-                    const saveData = (k, v) => localStorage.setItem(`parkingpro_${k}`, JSON.stringify(v));
-                    saveData('tickets', tickets); saveData('history', history); saveData('finances', finances);
-                    saveData('subscribers', subscribers); saveData('clients', clients); saveData('team', team);
-                    saveData('suppliers', suppliers); saveData('servicesList', servicesList); saveData('agreements', agreements);
-                    saveData('config', config);
+                if (db) {
+                    await db.collection(col).doc(String(id)).delete();
                 }
-            }, [tickets, history, finances, subscribers, clients, team, suppliers, servicesList, agreements, config]);
-
-            // Handlers
-            const handleLogin = (u, p, remember) => {
-                if (u === 'admin' && p === '1234') { // Login Simplificado
-                    if(remember) { localStorage.setItem('parkingpro_user', u); localStorage.setItem('parkingpro_pass', p); }
-                    setView('app');
-                } else notify('Senha incorreta', 'error');
             };
 
+            useEffect(() => {
+                if (view === 'app') {
+                    const save = (key, data) => localStorage.setItem(`parkingpro_${key}`, JSON.stringify(data));
+                    save('tickets', tickets); save('history', history); save('subscribers', subscribers);
+                    save('agreements', agreements); save('checklists', checklists); save('finances', finances);
+                    save('team', team); save('clients', clients); save('suppliers', suppliers);
+                    save('servicesList', servicesList); save('config', config);
+                }
+            }, [tickets, history, subscribers, agreements, checklists, finances, team, clients, suppliers, servicesList, config]);
+
+            const handleLogin = (u, p, remember) => { if (u === credentials.user && p === credentials.pass) { if (remember) { localStorage.setItem('parkingpro_saved_user', u); localStorage.setItem('parkingpro_saved_pass', p); } else { localStorage.removeItem('parkingpro_saved_user'); localStorage.removeItem('parkingpro_saved_pass'); } setView('app'); } else { notify('Acesso negado.', 'error'); } };
+            
+            // CÂMERA ALTERADA PARA FILE INPUT (NATIVE)
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                setLoadingCamera(true); notify('Lendo imagem...');
+                
+                setLoadingCamera(true);
+                notify('Processando imagem...', 'info');
+
                 try {
                     const { data: { text } } = await Tesseract.recognize(file, 'eng');
-                    const clean = text.replace(/[^A-Z0-9]/ig, '').toUpperCase();
-                    const match = clean.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/) || clean.match(/[A-Z]{3}[0-9]{4}/);
-                    if (match) { setEntryForm(p => ({...p, plate: match[0]})); notify('Placa encontrada!'); }
-                    else notify('Placa não identificada', 'error');
-                } catch(err) { notify('Erro na leitura', 'error'); }
-                finally { setLoadingCamera(false); }
-            };
+                    const cleanText = text.replace(/[^A-Z0-9]/ig, '').toUpperCase();
+                    const match = cleanText.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/) || cleanText.match(/[A-Z]{3}[0-9]{4}/);
 
-            // Ações Específicas
-            const handleEntry = () => {
-                if(!entryForm.plate) return notify('Digite a placa', 'error');
-                const newItem = { ...entryForm, id: Date.now(), entryTime: (entryForm.manualEntry || new Date()).toString(), services: [], status: 'active', plate: entryForm.plate.toUpperCase() };
+                    if (match) {
+                        setEntryForm(prev => ({ ...prev, plate: match[0] }));
+                        notify(`Placa detectada: ${match[0]}`, 'success');
+                    } else {
+                        notify('Não foi possível identificar a placa com certeza. Verifique a imagem.', 'error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    notify('Erro ao processar imagem.', 'error');
+                } finally {
+                    setLoadingCamera(false);
+                }
+            };
+            
+            const handleEntry = () => { 
+                if (!entryForm.plate) return notify('Placa é obrigatória', 'error'); 
+                const entryDateObj = entryForm.manualEntry ? new Date(entryForm.manualEntry) : new Date(); 
+                const isSub = subscribers.find(s => s.plate === entryForm.plate.toUpperCase() && s.active); 
+                const loyaltyClient = clients.find(c => c.plate === entryForm.plate.toUpperCase()); 
                 
-                if (entryForm.manualExit) {
-                    const exitTime = new Date(entryForm.manualExit);
-                    const entryTime = new Date(newItem.entryTime);
-                    if (exitTime <= entryTime) return notify('Saída anterior à entrada', 'error');
-                    // Calculo simples para manual
-                    newItem.exitTime = exitTime.toString();
-                    newItem.status = 'finished';
-                    newItem.total = 0; // Simplificado, ideal calcular
-                    saveItem('history', newItem);
-                    if(!db) setHistory(prev => [newItem, ...prev]);
-                    notify('Histórico adicionado');
+                if (loyaltyClient) { 
+                    // Update points - handled by next sync or local update
+                    // Ideally we should update the client record in DB
+                    const updatedClient = { ...loyaltyClient, points: (loyaltyClient.points || 0) + 1 };
+                    saveItem('clients', updatedClient, updatedClient.id);
+                    if (!db) setClients(prev => prev.map(c => c.id === loyaltyClient.id ? updatedClient : c));
+                    notify(`Cliente Fidelidade: ${loyaltyClient.name}. +1 Ponto!`, 'success'); 
+                } 
+                
+                const newTicket = { 
+                    id: Date.now(), 
+                    plate: entryForm.plate.toUpperCase(), 
+                    model: entryForm.model, 
+                    type: entryForm.type, 
+                    entryTime: entryDateObj.toISOString(), 
+                    isSubscriber: !!isSub, 
+                    isLoyalty: !!loyaltyClient, 
+                    loyaltyClientId: loyaltyClient ? loyaltyClient.id : null, 
+                    subscriberName: isSub ? isSub.name : null, 
+                    notes: entryForm.notes, 
+                    damages: entryForm.damages || [], 
+                    services: [], 
+                    status: 'active' 
+                }; 
+                
+                if (entryForm.manualExit) { 
+                    const exitDateObj = new Date(entryForm.manualExit); 
+                    if (exitDateObj <= entryDateObj) return notify('Saída deve ser após entrada.', 'error'); 
+                    const diffMins = Math.floor((exitDateObj - entryDateObj) / 60000); 
+                    const diffHours = Math.ceil(diffMins / 60); 
+                    let total = 0; 
+                    if (!isSub) { 
+                        if (diffMins > config.toleranceMin) { 
+                            const rate = entryForm.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; 
+                            total = diffHours >= 8 ? config.dailyRate : diffHours * rate; 
+                        } 
+                    } 
+                    const historyItem = { ...newTicket, exitTime: exitDateObj.toISOString(), durationMins: diffMins, durationHours: diffHours, subTotal: total, total: total, paymentMethod: 'Dinheiro (Manual)', status: 'finished', isHistory: true }; 
+                    saveItem('history', historyItem);
+                    if(!db) setHistory(prev => [historyItem, ...prev]); 
+                    setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); 
+                    notify('Lançamento realizado!'); 
+                    return; 
+                } 
+                
+                saveItem('tickets', newTicket);
+                if(!db) setTickets([...tickets, newTicket]); 
+                setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); 
+                setActiveTicket(newTicket); 
+                setModal('print_entry'); 
+                notify('Veículo registrado!'); 
+            };
+
+            const handleAddServices = () => { 
+                if(!addServiceForm.ticketId) return; 
+                const ticket = tickets.find(t => t.id === addServiceForm.ticketId);
+                if(ticket) {
+                    const updatedTicket = { ...ticket, services: addServiceForm.selectedServices };
+                    saveItem('tickets', updatedTicket, ticket.id);
+                    if(!db) setTickets(tickets.map(t => t.id === addServiceForm.ticketId ? updatedTicket : t)); 
+                    setModal(null); 
+                    notify('Serviços atualizados!'); 
+                }
+            };
+
+            const toggleServiceSelection = (serviceId) => { const currentSelected = addServiceForm.selectedServices; const service = servicesList.find(s => s.id === serviceId); if (currentSelected.find(s => s.id === serviceId)) setAddServiceForm({...addServiceForm, selectedServices: currentSelected.filter(s => s.id !== serviceId)}); else setAddServiceForm({...addServiceForm, selectedServices: [...currentSelected, service]}); };
+            const prepareExit = (ticket) => { const now = new Date(); const entry = new Date(ticket.entryTime); const diffMins = Math.floor((now - entry) / 60000); const diffHours = Math.ceil(diffMins / 60); let parkingFee = 0; if (!ticket.isSubscriber) { if (diffMins > config.toleranceMin) { const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; parkingFee = diffHours >= 8 ? config.dailyRate : diffHours * rate; } } const servicesFee = (ticket.services || []).reduce((acc, s) => acc + s.price, 0); const total = parkingFee + servicesFee; setActiveTicket({ ...ticket, exitTime: now.toISOString(), durationMins: diffMins, durationHours: diffHours, parkingFee: parkingFee, servicesFee: servicesFee, subTotal: total, total: total, appliedAgreement: null }); setPaymentMethod('Dinheiro'); setModal('confirm_exit'); };
+            const calculateTotalWithAgreement = (ticket, agreementId) => { if(!agreementId) { setActiveTicket({...ticket, total: ticket.subTotal, appliedAgreement: null}); return; } const agreement = agreements.find(a => a.id == agreementId); let newParkingFee = ticket.parkingFee; if(agreement) { if(agreement.discountType === 'percentage') newParkingFee = ticket.parkingFee * (1 - agreement.value / 100); else if (agreement.discountType === 'free_time') { const chargeableMins = Math.max(0, ticket.durationMins - agreement.value); if (chargeableMins === 0) newParkingFee = 0; else { const chargeableHours = Math.ceil(chargeableMins / 60); const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; newParkingFee = chargeableHours * rate; } } } const finalTotal = newParkingFee + ticket.servicesFee; setActiveTicket({...ticket, total: finalTotal, appliedAgreement: agreement}); };
+            
+            const confirmExit = () => { 
+                const finishedTicket = { ...activeTicket, paymentMethod, status: 'finished', isHistory: true };
+                saveItem('history', finishedTicket);
+                deleteItem('tickets', activeTicket.id);
+                if(!db) {
+                    setTickets(prev => prev.filter(t => t.id !== activeTicket.id)); 
+                    setHistory(prev => [{...activeTicket, paymentMethod}, ...prev]); 
+                }
+                setModal('print_exit'); 
+                notify('Saída registrada!'); 
+            };
+
+            // CRUD & Configs
+            const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); if(!db) setChecklists(prev => [newChecklist, ...prev]); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
+            
+            const saveFinance = () => { 
+                const val = parseFloat(financeForm.value);
+                if (editingFinanceId) {
+                    const updated = { ...financeForm, id: editingFinanceId, value: val };
+                    saveItem('finances', updated, editingFinanceId);
+                    if(!db) setFinances(prev => prev.map(f => f.id === editingFinanceId ? updated : f));
+                    setEditingFinanceId(null);
+                    notify('Lançamento atualizado!');
                 } else {
-                    saveItem('tickets', newItem);
-                    if(!db) setTickets(prev => [...prev, newItem]);
-                    notify('Veículo estacionado');
-                    setActiveTicket(newItem);
-                    setModal('print_entry');
+                    const newFinance = { ...financeForm, id: Date.now(), value: val };
+                    saveItem('finances', newFinance);
+                    if(!db) setFinances(prev => [newFinance, ...prev]); 
+                    notify('Lançamento salvo!'); 
                 }
-                setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
+                setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' });
+                setModal(null);
             };
 
-            const handleFinanceSave = () => {
-                const item = { ...financeForm, value: parseFloat(financeForm.value) || 0 };
-                const id = editingId || Date.now();
-                saveItem('finances', { ...item, id });
-                if(!db) setFinances(prev => editingId ? prev.map(f => f.id === id ? {...item, id} : f) : [{...item, id}, ...prev]);
-                setModal(null); notify('Salvo!');
+            const handleEditFinance = (item) => {
+                setFinanceForm({
+                    type: item.type,
+                    description: item.description || item.desc,
+                    value: item.value,
+                    date: item.date.split('T')[0],
+                    category: item.category || item.cat,
+                    file: item.file,
+                    fileName: item.fileName
+                });
+                setEditingFinanceId(item.id);
+                setModal('finance');
             };
 
-            const handleDelete = (col, id, setFn) => {
-                if(confirm('Tem certeza?')) {
-                    deleteItem(col, id);
-                    if(!db) setFn(prev => prev.filter(i => i.id !== id));
-                    notify('Removido');
+            const handleDeleteFinance = (id) => {
+                if(confirm('Tem certeza que deseja excluir este lançamento?')) {
+                    deleteItem('finances', id);
+                    if(!db) setFinances(prev => prev.filter(f => f.id !== id));
+                    notify('Lançamento excluído.');
                 }
+            };
+
+            const handleEditTicket = (t) => {
+                setEditTicketForm({ id: t.id, plate: t.plate, model: t.model, type: t.type, notes: t.notes || '' });
+                setModal('edit_ticket');
+            };
+
+            const saveTicketEdit = () => {
+                const updated = { ...tickets.find(t=>t.id===editTicketForm.id), ...editTicketForm, plate: editTicketForm.plate.toUpperCase() };
+                saveItem('tickets', updated, updated.id);
+                if(!db) setTickets(prev => prev.map(t => t.id === editTicketForm.id ? updated : t));
+                setModal(null);
+                notify('Dados do veículo atualizados!');
+            };
+
+            const handleDeleteTicket = (id) => {
+                if(confirm('Tem certeza que deseja remover este veículo do pátio? (Esta ação não gera histórico)')) {
+                    deleteItem('tickets', id);
+                    if(!db) setTickets(prev => prev.filter(t => t.id !== id));
+                    notify('Veículo removido.');
+                }
+            };
+
+            const saveTeam = () => { const newMember = { ...teamForm, id: Date.now() }; saveItem('team', newMember); if(!db) setTeam(prev => [...prev, newMember]); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setModal(null); notify('Funcionário cadastrado!'); };
+            const saveAgreement = () => { const id = Date.now(); const newA = {...agreementForm, id}; saveItem('agreements', newA); if(!db) setAgreements([...agreements, newA]); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); notify('Convênio cadastrado!'); };
+            
+            const saveServiceConfig = () => {
+                if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error');
+                const price = parseFloat(serviceConfigForm.price);
+                if (editingServiceId) {
+                    const updated = { ...serviceConfigForm, id: editingServiceId, price };
+                    saveItem('servicesList', updated, editingServiceId);
+                    if(!db) setServicesList(prev => prev.map(s => s.id === editingServiceId ? updated : s));
+                    setEditingServiceId(null); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço atualizado!');
+                } else {
+                    const newService = { ...serviceConfigForm, id: Date.now(), price };
+                    saveItem('servicesList', newService);
+                    if(!db) setServicesList([...servicesList, newService]); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!');
+                }
+            };
+            const handleEditService = (service) => { setServiceConfigForm({ name: service.name, price: service.price }); setEditingServiceId(service.id); };
+            const cancelEditService = () => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); };
+            const removeServiceConfig = (id) => { deleteItem('servicesList', id); if(!db) setServicesList(servicesList.filter(s => s.id !== id)); };
+            
+            const downloadBills = () => { const dueBills = finances.filter(f => f.type === 'Despesa'); if (dueBills.length === 0) return notify('Nenhuma despesa.', 'info'); let textContent = "RELATÓRIO DE CONTAS\n===================\n\n"; dueBills.forEach(b => { textContent += `DATA: ${new Date(b.date).toLocaleDateString()}\nDESC: ${b.description}\nCAT: ${b.category}\nVALOR: ${formatCurrency(b.value)}\n----------------\n`; }); textContent += `\nTOTAL: ${formatCurrency(dueBills.reduce((acc, curr) => acc + curr.value, 0))}`; const blob = new Blob([textContent], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `boletos_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Download iniciado.'); };
+            const downloadDashboardReport = () => { const reportDate = new Date().toLocaleDateString(); let content = `RELATÓRIO GERENCIAL\nDATA: ${reportDate}\n\n`; content += `Ocupação: ${stats.occupied}/${config.totalSpots}\nReceita: ${formatCurrency(stats.totalRevenue)}\nDespesas: ${formatCurrency(stats.expenses)}\nBalanço: ${formatCurrency(stats.balance)}\n\nMOVIMENTAÇÕES:\n`; history.slice(0, 20).forEach(h => { content += `[${new Date(h.exitTime).toLocaleTimeString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; }); const blob = new Blob([content], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Relatorio_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Relatório baixado!'); };
+            const saveClient = () => { if(!clientForm.name) return notify('Nome obrigatório', 'error'); const id = editClient ? editClient.id : Date.now(); const newClient = { ...clientForm, id }; saveItem('clients', newClient, id); if(!db) { if(editClient) setClients(prev => prev.map(c => c.id === id ? newClient : c)); else setClients(prev => [...prev, newClient]); } setModal(null); setEditClient(null); setClientForm({ name: '', phone: '', plate: '', points: 0, notes: '' }); notify('Cliente salvo!'); };
+            const saveSupplier = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); if(!db) { if(editSupplier) setSuppliers(prev => prev.map(s => s.id === id ? newSupplier : s)); else setSuppliers(prev => [...prev, newSupplier]); } setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
+            const saveSubscriber = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); if(!db) { if(editSubscriber) setSubscribers(prev => prev.map(s => s.id === id ? newSubscriber : s)); else setSubscribers(prev => [...prev, newSubscriber]); } setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
+            const addPoints = (clientId, amount) => { 
+                const c = clients.find(c=>c.id===clientId);
+                if(c) {
+                    const updated = { ...c, points: Math.max(0, (c.points || 0) + amount) };
+                    saveItem('clients', updated, clientId);
+                    if(!db) setClients(prev => prev.map(cl => cl.id === clientId ? updated : cl)); 
+                    notify(amount > 0 ? 'Pontos add!' : 'Pontos resgatados!'); 
+                }
+            };
+            const handleChangePassword = () => { if (passwordForm.current !== credentials.pass) return notify('Senha incorreta.', 'error'); if (passwordForm.new !== passwordForm.confirm) return notify('Senhas não coincidem.', 'error'); if (!passwordForm.new) return notify('Senha vazia.', 'error'); const newCreds = { ...credentials, pass: passwordForm.new }; setCredentials(newCreds); localStorage.setItem('parkingpro_credentials', JSON.stringify(newCreds)); if (localStorage.getItem('parkingpro_saved_pass')) localStorage.setItem('parkingpro_saved_pass', passwordForm.new); setPasswordForm({ current: '', new: '', confirm: '' }); notify('Senha alterada!'); };
+
+            // Salvar Config Geral
+            const saveConfig = () => {
+                localStorage.setItem('parkingpro_config', JSON.stringify(config));
+                notify('Configurações salvas!');
             };
 
             const stats = useMemo(() => {
-                const occ = tickets.length;
-                const rev = (Array.isArray(finances) ? finances : []).filter(f => f.type === 'Receita').reduce((a, b) => a + (Number(b.value) || 0), 0);
-                const exp = (Array.isArray(finances) ? finances : []).filter(f => f.type === 'Despesa').reduce((a, b) => a + (Number(b.value) || 0), 0);
-                // Soma receitas de tickets do dia também
-                const todayTickets = (Array.isArray(history) ? history : []).filter(h => new Date(h.exitTime).toLocaleDateString() === new Date().toLocaleDateString())
-                                    .reduce((a,b) => a + (Number(b.total) || 0), 0);
-                return { occupied: occ, free: config.totalSpots - occ, totalRevenue: rev + todayTickets, expenses: exp, balance: (rev + todayTickets) - exp };
-            }, [tickets, finances, history, config]);
+                const occupied = tickets.length; const free = config.totalSpots - occupied;
+                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
+                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                const totalRevenue = ticketsRevenue + extraRevenue; const balance = totalRevenue - expenses;
+                return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
+            }, [tickets, history, subscribers, finances, config]);
 
             if (view === 'login') return <LoginScreen onLogin={handleLogin} />;
 
             return (
-                <div className="flex h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
-                    <Toast {...toast} onClose={()=>setToast(p=>({...p, show:false}))} />
+                <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
+                    <Toast {...toast} onClose={()=>setToast({...toast, show:false})} />
                     
-                    {/* Sidebar */}
-                    <aside className={`fixed inset-y-0 z-50 w-64 bg-slate-950 transition-transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center"><BrandLogo /><button className="md:hidden" onClick={()=>setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button></div>
-                        <nav className="p-4 space-y-1 overflow-y-auto h-full">
-                            {Object.keys(tabNames).map(key => (
-                                <button key={key} onClick={()=>{setTab(key); setIsMobileMenuOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded transition ${tab===key ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-                                    <span className="capitalize">{tabNames[key]}</span>
+                    {/* Mobile Overlay */}
+                    {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>}
+
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+                            <BrandLogo />
+                            <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button>
+                        </div>
+                        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                            {[
+                                { id: 'dashboard', label: 'Visão Geral', icon: 'gauge' },
+                                { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile' },
+                                { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half' }, 
+                                { id: 'finance', label: 'Financeiro', icon: 'currency-dollar' },
+                                { id: 'suppliers', label: 'Fornecedores', icon: 'truck' }, 
+                                { id: 'team', label: 'Equipe', icon: 'users' },
+                                { id: 'clients', label: 'Fidelidade', icon: 'identification-card' },
+                                { id: 'subscribers', label: 'Mensalistas', icon: 'users-three' },
+                                { id: 'agreements', label: 'Convênios', icon: 'handshake' },
+                                { id: 'config', label: 'Configurações', icon: 'gear' },
+                            ].map(item => (
+                                <button key={item.id} onClick={() => { setTab(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold ${tab === item.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                                    <i className={`ph ph-${item.icon} text-xl`}></i> {item.label}
                                 </button>
                             ))}
-                            <div className="mt-8 p-4 text-center text-xs text-slate-600">
-                                {isOnline ? <span className="text-emerald-500">● Online (Nuvem)</span> : <span className="text-orange-500">● Offline (Local)</span>}
-                            </div>
                         </nav>
+                        <div className="p-4 text-center text-xs text-slate-600 flex justify-center items-center gap-2">
+                             {isOnline ? <span className="text-emerald-500 flex items-center gap-1"><i className="ph-fill ph-cloud-check"></i> Online</span> : <span className="text-slate-500 flex items-center gap-1"><i className="ph-fill ph-cloud-slash"></i> Offline</span>}
+                        </div>
                     </aside>
 
-                    {/* Main Content */}
-                    <main className="flex-1 flex flex-col relative w-full overflow-hidden">
-                        <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6">
-                            <button className="md:hidden" onClick={()=>setIsMobileMenuOpen(true)}><i className="ph-bold ph-list text-2xl"></i></button>
-                            <h2 className="text-xl font-bold uppercase">{tabNames[tab]}</h2>
-                            <div className="text-right"><p className="text-xs text-slate-400">Vagas</p><p className={`text-xl font-bold ${stats.free < 5 ? 'text-red-500' : 'text-emerald-400'}`}>{stats.free}</p></div>
+                    <main className="flex-1 flex flex-col overflow-hidden relative w-full">
+                        <header className="h-16 bg-slate-900/80 backdrop-blur border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-10">
+                            <div className="flex items-center gap-3">
+                                <button className="md:hidden text-slate-300" onClick={() => setIsMobileMenuOpen(true)}><i className="ph-bold ph-list text-2xl"></i></button>
+                                <h2 className="text-lg md:text-xl font-bold text-white tracking-wide uppercase truncate">{tabNames[tab]}</h2>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] md:text-xs text-slate-400">Vagas Livres</p>
+                                <p className={`text-lg md:text-xl font-black ${stats.free < 5 ? 'text-red-500' : 'text-emerald-400'}`}>{stats.free} <span className="text-xs md:text-sm font-normal text-slate-500">/ {config.totalSpots}</span></p>
+                            </div>
                         </header>
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 relative bg-slate-900">
+                            
+                            {/* DASHBOARD */}
                             {tab === 'dashboard' && (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                        <div className="bg-slate-800 p-4 rounded border-t-4 border-cyan-500"><h3>Ocupação</h3><p className="text-2xl font-bold">{stats.occupied}</p></div>
-                                        <div className="bg-slate-800 p-4 rounded border-t-4 border-emerald-500"><h3>Receita</h3><p className="text-2xl font-bold text-emerald-400">{formatCurrency(stats.totalRevenue)}</p></div>
-                                        <div className="bg-slate-800 p-4 rounded border-t-4 border-red-500"><h3>Despesas</h3><p className="text-2xl font-bold text-red-400">{formatCurrency(stats.expenses)}</p></div>
-                                        <div className="bg-slate-800 p-4 rounded border-t-4 border-blue-500"><h3>Balanço</h3><p className="text-2xl font-bold text-blue-400">{formatCurrency(stats.balance)}</p></div>
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                        <h3 className="font-bold text-xl text-white">Painel de Controle</h3>
+                                        <button onClick={downloadDashboardReport} className="w-full md:w-auto bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-download"></i> Relatório</button>
                                     </div>
-                                    <div className="bg-slate-800 p-4 rounded border border-slate-700"><ParkingChart historyData={history} financeData={finances} /></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-cyan-500 shadow-lg"><p className="text-xs text-slate-400 uppercase font-bold">Ocupação</p><h3 className="text-3xl font-bold text-white mt-2">{stats.occupied} <span className="text-sm text-slate-500 font-normal">veículos</span></h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-emerald-500 shadow-lg"><p className="text-xs text-slate-400 uppercase font-bold">Receita (Dia)</p><h3 className="text-3xl font-bold text-emerald-400 mt-2">{formatCurrency(stats.totalRevenue)}</h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-red-500 shadow-lg"><p className="text-xs text-slate-400 uppercase font-bold">Despesas (Dia)</p><h3 className="text-3xl font-bold text-red-400 mt-2">{formatCurrency(stats.expenses)}</h3></div>
+                                        <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-blue-500 shadow-lg"><p className="text-xs text-slate-400 uppercase font-bold">Balanço (Dia)</p><h3 className={`text-3xl font-bold mt-2 ${stats.balance >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{formatCurrency(stats.balance)}</h3></div>
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Fluxo Financeiro (7 Dias)</h3><ParkingChart historyData={history} financeData={finances} /></div>
+                                        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Mapa de Vagas</h3><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto pr-2">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => { const isOccupied = i < tickets.length; return (<div key={i} className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold transition ${isOccupied ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>); })}</div></div>
+                                    </div>
                                 </div>
                             )}
 
+                            {/* PÁTIO */}
                             {tab === 'patio' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in h-full">
-                                    <div className="bg-slate-800 p-6 rounded h-fit">
-                                        <h3 className="font-bold text-xl mb-4">Nova Entrada</h3>
-                                        <div className="space-y-3">
-                                            <div className="flex gap-2">
-                                                <input className="w-full bg-slate-900 p-3 rounded uppercase text-center text-xl font-bold" placeholder="ABC-1234" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value})} />
-                                                <label className="bg-slate-700 p-3 rounded cursor-pointer"><i className="ph-bold ph-camera text-xl"></i><input type="file" className="hidden" onChange={handleFileScan} /></label>
+                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 h-fit shadow-xl order-1 lg:order-1">
+                                        <h3 className="font-bold text-xl text-cyan-400 mb-6 flex items-center gap-2"><i className="ph-bold ph-gate"></i> Nova Entrada</h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="text-xs text-slate-400 uppercase font-bold block mb-1">Placa</label>
+                                                <div className="flex gap-2">
+                                                    <input className="w-full bg-slate-900 border-2 border-slate-700 p-4 rounded-lg text-white font-mono text-2xl uppercase focus:border-cyan-500 outline-none text-center tracking-widest" placeholder="ABC-1234" value={entryForm.plate} onChange={e => setEntryForm({...entryForm, plate: e.target.value.toUpperCase()})} maxLength={8} />
+                                                    <label className="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg border-2 border-slate-600 flex items-center justify-center w-16 cursor-pointer" title="Usar Câmera / Foto">
+                                                        <i className="ph-bold ph-camera text-2xl"></i>
+                                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileScan} />
+                                                    </label>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 mt-1 text-center">* Use o botão de câmera para tirar foto da placa</p>
+                                                {loadingCamera && <p className="text-xs text-cyan-400 text-center animate-pulse mt-1">Lendo placa...</p>}
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={()=>setEntryForm({...entryForm, type:'Carro'})} className={`flex-1 py-2 rounded ${entryForm.type==='Carro'?'bg-cyan-600':'bg-slate-700'}`}>Carro</button>
-                                                <button onClick={()=>setEntryForm({...entryForm, type:'Moto'})} className={`flex-1 py-2 rounded ${entryForm.type==='Moto'?'bg-cyan-600':'bg-slate-700'}`}>Moto</button>
-                                            </div>
-                                            <input className="w-full bg-slate-900 p-3 rounded" placeholder="Modelo" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
-                                            <button onClick={handleEntry} className="w-full bg-emerald-600 py-3 rounded font-bold">Registrar Entrada</button>
+                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-3 rounded text-sm font-bold transition ${entryForm.type === 'Carro' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-3 rounded text-sm font-bold transition ${entryForm.type === 'Moto' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Moto</button></div>
+                                            <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded-lg text-white text-sm" placeholder="Modelo (Opcional)" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
+                                            <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-red-400 font-bold mb-2 uppercase flex items-center gap-1"><i className="ph-fill ph-warning"></i> Checklist Avaria</p><div className="grid grid-cols-2 gap-2 mb-2">{commonDamages.map(item => (<div key={item} className="flex items-center gap-2"><input type="checkbox" id={`dmg-${item}`} checked={entryForm.damages.includes(item)} onChange={e => { const newDamages = e.target.checked ? [...entryForm.damages, item] : entryForm.damages.filter(i => i !== item); setEntryForm({...entryForm, damages: newDamages}); }} className="accent-red-500 w-5 h-5" /><label htmlFor={`dmg-${item}`} className="text-xs text-slate-300 cursor-pointer">{item}</label></div>))}</div><input className="w-full bg-slate-800 border border-slate-600 p-3 rounded text-white text-xs" placeholder="Obs: Avaria específica..." value={entryForm.notes} onChange={e=>setEntryForm({...entryForm, notes:e.target.value})} /></div>
+                                            <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-slate-500 font-bold mb-2 uppercase">Ajuste Manual</p><div className="grid grid-cols-2 gap-2"><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualEntry} onChange={e=>setEntryForm({...entryForm, manualEntry:e.target.value})} /><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualExit} onChange={e=>setEntryForm({...entryForm, manualExit:e.target.value})} /></div></div>
+                                            <button onClick={handleEntry} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-4 rounded-lg shadow-lg shadow-cyan-900/50 flex items-center justify-center gap-2 mt-4 text-lg active:scale-95 transition"><i className="ph-bold ph-ticket"></i> {entryForm.manualExit ? 'Lançar Histórico' : 'Gerar Ticket'}</button>
                                         </div>
                                     </div>
-                                    <div className="lg:col-span-2 space-y-3">
-                                        <input className="w-full bg-slate-800 p-3 rounded" placeholder="Buscar placa..." value={filterPlate} onChange={e=>setFilterPlate(e.target.value.toUpperCase())} />
-                                        {tickets.filter(t=>t.plate && t.plate.includes(filterPlate)).map(t => (
-                                            <div key={t.id} className="bg-slate-800 p-4 rounded flex justify-between items-center border-l-4 border-cyan-500">
-                                                <div><h4 className="font-bold text-lg">{t.plate}</h4><p className="text-sm text-slate-400">{t.model} - {new Date(t.entryTime).toLocaleTimeString()}</p></div>
-                                                <button onClick={()=>{setActiveTicket(t); setModal('exit_confirm');}} className="bg-red-600 px-4 py-2 rounded font-bold">Saída</button>
+                                    <div className="lg:col-span-2 bg-slate-800 rounded-xl p-4 md:p-6 border border-slate-700 flex flex-col overflow-hidden h-[80vh] lg:h-auto order-2 lg:order-2">
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4"><h3 className="font-bold text-xl text-white">Veículos no Pátio</h3><input className="bg-slate-900 border border-slate-700 rounded-lg py-3 px-4 text-sm text-white w-full md:w-64" placeholder="Filtrar placa..." value={filterPlate} onChange={e=>setFilterPlate(e.target.value.toUpperCase())} /></div>
+                                        <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                                            {tickets.filter(t => t.plate.includes(filterPlate)).map(t => (
+                                                <div key={t.id} className="bg-slate-900 p-4 rounded-lg border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center hover:border-cyan-500 transition group gap-4">
+                                                    <div className="flex items-center gap-4"><div className={`p-3 rounded-lg ${t.type === 'Carro' ? 'bg-blue-900/30 text-blue-400' : 'bg-orange-900/30 text-orange-400'}`}><i className={`ph-fill ${t.type === 'Carro' ? 'ph-car' : 'ph-motorcycle'} text-2xl`}></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-xl font-mono">{t.plate}</h4>{t.isSubscriber && <span className="bg-violet-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded">Mensalista</span>}{t.isLoyalty && <span className="bg-emerald-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded flex items-center gap-1"><i className="ph-fill ph-star"></i> Fidelidade</span>}{t.damages && t.damages.length > 0 && <span className="bg-red-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded flex items-center gap-1"><i className="ph-fill ph-warning"></i> Avaria</span>}</div><p className="text-sm text-slate-400">{t.model} • {new Date(t.entryTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p></div></div>
+                                                    <div className="flex gap-2 w-full md:w-auto"><button onClick={() => {setChecklistForm({...checklistForm, plate: t.plate, model: t.model}); setModal('checklist');}} className="flex-1 md:flex-none p-3 md:p-2 text-slate-400 hover:text-white bg-slate-800 rounded border border-slate-600" title="Vistoria"><i className="ph-bold ph-clipboard-text"></i></button><button onClick={() => prepareExit(t)} className="flex-1 md:flex-none bg-red-600 hover:bg-red-500 text-white px-4 py-3 md:py-2 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-sign-out"></i> Saída</button></div>
+                                                </div>
+                                            ))}
+                                            {tickets.length === 0 && <div className="text-center py-20 text-slate-500">Pátio vazio.</div>}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'carwash' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Serviços e Lava-rápido</h3>
+                                        <button onClick={() => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); setModal('service_types'); }} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-gear"></i> <span className="hidden md:inline">Gerenciar Serviços</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {tickets.filter(t => t.plate.includes(filterPlate)).map(t => {
+                                            const hasServices = t.services && t.services.length > 0;
+                                            const totalServices = (t.services || []).reduce((acc, s) => acc + s.price, 0);
+                                            return (
+                                                <div key={t.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                    <div className="flex items-center gap-4 w-full md:w-auto"><div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center font-bold text-xl text-slate-300"><i className="ph-fill ph-car"></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg font-mono">{t.plate}</h4><span className="text-sm text-slate-400">{t.model}</span></div><div className="text-xs text-slate-500">Entrada: {new Date(t.entryTime).toLocaleTimeString()}</div></div></div>
+                                                    <div className="flex-1 w-full md:w-auto border-l-0 md:border-l border-slate-700 pl-0 md:pl-4"><p className="text-xs text-slate-400 font-bold uppercase mb-1">Serviços</p>{hasServices ? (<div className="flex flex-wrap gap-2">{t.services.map(s => <span key={s.id} className="bg-cyan-900/50 text-cyan-300 border border-cyan-700 px-2 py-1 rounded text-xs">{s.name}</span>)}</div>) : (<p className="text-slate-600 text-sm italic">Nenhum serviço.</p>)}</div>
+                                                    <div className="flex justify-between w-full md:w-auto items-center gap-4">
+                                                        <div className="text-right min-w-[100px]"><p className="text-xs text-slate-400 uppercase">Total Serviços</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totalServices)}</p></div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={()=>{setAddServiceForm({ticketId: t.id, selectedServices: t.services || []}); setModal('service_manager');}} className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-sm flex items-center gap-2" title="Gerenciar Serviços"><i className="ph-bold ph-list-plus"></i> Serviços</button>
+                                                            <button onClick={() => handleEditTicket(t)} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm" title="Editar Veículo"><i className="ph-bold ph-pencil"></i></button>
+                                                            <button onClick={() => handleDeleteTicket(t.id)} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded font-bold text-sm" title="Excluir Veículo"><i className="ph-bold ph-trash"></i></button>
+                                                            {hasServices && <button onClick={()=>{setActiveTicket(t); setModal('print_os');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm flex items-center gap-2" title="Imprimir OS"><i className="ph-bold ph-printer"></i> OS</button>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {tickets.length === 0 && <p className="text-center text-slate-500 py-10">Nenhum veículo no pátio.</p>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'finance' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                        <h3 className="font-bold text-xl text-white">Controle Financeiro</h3>
+                                        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                            <button onClick={downloadBills} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white px-4 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-download"></i> Boletos</button>
+                                            <button onClick={() => {setEditingFinanceId(null); setFinanceForm({type: 'Despesa', description: '', value: 0, date: new Date().toISOString().split('T')[0], category: 'Geral', file: null, fileName: ''}); setModal('finance');}} className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-plus"></i> Lançar</button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-sm text-slate-300 min-w-[600px]">
+                                                <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-xs">
+                                                    <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4">Categoria</th><th className="p-4 text-center">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Anexo</th><th className="p-4 text-center">Ações</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-700">
+                                                    {[...history.map(h => ({...h, date: h.exitTime, desc: `Ticket #${h.id} - ${h.plate}`, type: 'Receita', cat: 'Estacionamento', value: h.total})), 
+                                                      ...finances.map(f => ({...f, desc: f.description, cat: f.category}))]
+                                                      .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                      .slice(0, 100)
+                                                      .map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-700/30">
+                                                            <td className="p-4 text-slate-500">{new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                                                            <td className="p-4 font-bold text-white">{item.desc}</td>
+                                                            <td className="p-4 text-xs">{item.cat}</td>
+                                                            <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${item.type === 'Receita' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{item.type}</span></td>
+                                                            <td className={`p-4 text-right font-bold ${item.type === 'Receita' ? 'text-emerald-400' : 'text-red-400'}`}>{item.type === 'Despesa' ? '-' : '+'} {formatCurrency(item.value)}</td>
+                                                            <td className="p-4 text-center">
+                                                                {item.file && <a href={item.file} download={item.fileName} className="text-cyan-400 hover:text-cyan-300" title="Baixar Boleto/Anexo"><i className="ph-bold ph-file-arrow-down text-lg"></i></a>}
+                                                            </td>
+                                                            <td className="p-4 text-center">
+                                                                {!item.isHistory && (
+                                                                    <div className="flex items-center justify-center gap-2">
+                                                                        <button onClick={() => handleEditFinance(item)} className="text-blue-400 hover:text-blue-300" title="Editar"><i className="ph-bold ph-pencil"></i></button>
+                                                                        <button onClick={() => handleDeleteFinance(item.id)} className="text-red-400 hover:text-red-300" title="Excluir"><i className="ph-bold ph-trash"></i></button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'suppliers' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Fornecedores</h3>
+                                        <button onClick={() => {setEditSupplier(null); setSupplierForm({name:'', contact:'', category:'Peças', notes:''}); setModal('supplier_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Fornecedor</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {suppliers.map(supplier => (
+                                            <div key={supplier.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="mb-4 pr-12">
+                                                    <h4 className="font-bold text-white text-lg">{supplier.name}</h4>
+                                                    <p className="text-xs text-cyan-400 font-bold uppercase mt-1">{supplier.category}</p>
+                                                    <p className="text-sm text-slate-300 mt-2"><i className="ph-fill ph-phone"></i> {supplier.contact}</p>
+                                                    {supplier.notes && <p className="text-xs text-slate-500 mt-2 italic">"{supplier.notes}"</p>}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => {setEditSupplier(supplier); setSupplierForm(supplier); setModal('supplier_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button>
+                                                    <button onClick={() => {if(confirm('Excluir fornecedor?')) setSuppliers(prev => prev.filter(s => s.id !== supplier.id))}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {tab === 'finance' && (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="flex justify-end"><button onClick={()=>{setEditingId(null); setFinanceForm({type:'Despesa', description:'', value:0, date:new Date().toISOString().split('T')[0], category:'Geral'}); setModal('finance');}} className="bg-emerald-600 px-4 py-2 rounded font-bold">Novo Lançamento</button></div>
-                                    <div className="bg-slate-800 rounded overflow-x-auto">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-slate-900 text-slate-400"><tr><th className="p-3">Data</th><th className="p-3">Desc</th><th className="p-3">Tipo</th><th className="p-3">Valor</th><th className="p-3">Ações</th></tr></thead>
-                                            <tbody>
-                                                {(Array.isArray(finances) ? finances : []).concat(Array.isArray(history) ? history.map(h => ({...h, date: h.exitTime, description: `Ticket ${h.plate}`, type: 'Receita', value: h.total, isHistory: true})) : [])
-                                                .sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 50).map((item, i) => (
-                                                    <tr key={i} className="border-b border-slate-700">
-                                                        <td className="p-3">{new Date(item.date).toLocaleDateString()}</td>
-                                                        <td className="p-3">{item.description || item.desc}</td>
-                                                        <td className="p-3"><span className={`px-2 py-1 rounded text-xs ${item.type==='Receita'?'bg-emerald-900 text-emerald-400':'bg-red-900 text-red-400'}`}>{item.type}</span></td>
-                                                        <td className="p-3 font-bold">{formatCurrency(item.value)}</td>
-                                                        <td className="p-3">
-                                                            {!item.isHistory && (
-                                                                <div className="flex gap-2">
-                                                                    <button onClick={()=>{setFinanceForm(item); setEditingId(item.id); setModal('finance');}} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button>
-                                                                    <button onClick={()=>handleDelete('finances', item.id, setFinances)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                            {tab === 'team' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Equipe</h3>
+                                        <button onClick={() => {setTeamForm({name:'', role:'Operador', shift:'Manhã', phone:''}); setModal('team');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-user-plus"></i> <span className="hidden md:inline">Novo Funcionário</span></button>
                                     </div>
-                                </div>
-                            )}
-
-                            {/* Configurações (Restaurada) */}
-                            {tab === 'config' && (
-                                <div className="space-y-6 animate-fade-in max-w-3xl mx-auto">
-                                    <div className="bg-slate-800 p-6 rounded border border-slate-700">
-                                        <h3 className="font-bold text-xl mb-4">Geral</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div><label className="text-xs block mb-1">Nome</label><input className="w-full bg-slate-900 p-2 rounded" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
-                                            <div><label className="text-xs block mb-1">Vagas</label><input type="number" className="w-full bg-slate-900 p-2 rounded" value={config.totalSpots} onChange={e=>setConfig({...config, totalSpots:e.target.value})} /></div>
-                                            <div><label className="text-xs block mb-1">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 p-2 rounded" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
-                                            <div><label className="text-xs block mb-1">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 p-2 rounded" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
-                                        </div>
-                                        <button onClick={()=>{localStorage.setItem('parkingpro_config', JSON.stringify(config)); notify('Salvo!');}} className="mt-4 bg-cyan-600 px-6 py-2 rounded font-bold">Salvar Configurações</button>
-                                    </div>
-
-                                    <div className="bg-slate-800 p-6 rounded border border-slate-700">
-                                        <h3 className="font-bold text-xl mb-4">Catálogo de Serviços</h3>
-                                        <div className="flex gap-2 mb-4">
-                                            <input className="flex-1 bg-slate-900 p-2 rounded" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
-                                            <input className="w-24 bg-slate-900 p-2 rounded" type="number" placeholder="R$" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
-                                            <button onClick={()=>{
-                                                const newItem = { ...serviceConfigForm, id: Date.now(), price: parseFloat(serviceConfigForm.price) || 0 };
-                                                saveItem('servicesList', newItem);
-                                                if(!db) setServicesList(prev => [...prev, newItem]);
-                                                setServiceConfigForm({name:'', price:0}); notify('Serviço adicionado');
-                                            }} className="bg-emerald-600 px-4 rounded font-bold">+</button>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {servicesList.map(s => (
-                                                <div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded">
-                                                    <span>{s.name}</span>
-                                                    <div className="flex items-center gap-4">
-                                                        <span className="font-bold text-emerald-400">{formatCurrency(s.price)}</span>
-                                                        <button onClick={()=>handleDelete('servicesList', s.id, setServicesList)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {team.map(member => (
+                                            <div key={member.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xl text-slate-300">{member.name.charAt(0)}</div>
+                                                <div>
+                                                    <h4 className="font-bold text-white">{member.name}</h4>
+                                                    <p className="text-sm text-cyan-400">{member.role}</p>
+                                                    <div className="text-xs text-slate-500 mt-1 flex gap-2">
+                                                        <span><i className="ph-fill ph-clock"></i> {member.shift}</span>
+                                                        <span><i className="ph-fill ph-phone"></i> {member.phone}</span>
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}
+
+                            {tab === 'clients' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Clientes & Fidelidade</h3>
+                                        <button onClick={() => {setEditClient(null); setClientForm({name:'', phone:'', plate:'', points: 0, notes:''}); setModal('client_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Cliente</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {clients.map(client => (
+                                            <div key={client.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="absolute top-0 right-0 p-3 bg-slate-900 rounded-bl-xl border-l border-b border-slate-700">
+                                                    <div className="text-center">
+                                                        <span className="text-2xl font-bold text-emerald-400 block leading-none">{client.points}</span>
+                                                        <span className="text-[9px] text-slate-500 uppercase font-bold">Pontos</span>
+                                                    </div>
+                                                </div>
+                                                <div className="mb-4 pr-12">
+                                                    <h4 className="font-bold text-white text-lg">{client.name}</h4>
+                                                    <p className="text-xs text-slate-400 mt-1"><i className="ph-fill ph-phone"></i> {client.phone}</p>
+                                                    <p className="text-xs text-slate-400"><i className="ph-fill ph-car"></i> {client.plate}</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => addPoints(client.id, 1)} className="flex-1 py-3 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded text-xs font-bold border border-emerald-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-plus"></i> 1 Ponto</button>
+                                                    <button onClick={() => {
+                                                        if(client.points >= 10) {
+                                                            if(confirm('Resgatar 10 pontos?')) addPoints(client.id, -10);
+                                                        } else {
+                                                            notify('Saldo insuficiente (Min: 10)', 'error');
+                                                        }
+                                                    }} className="flex-1 py-3 bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 rounded text-xs font-bold border border-violet-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-gift"></i> Resgatar</button>
+                                                    <button onClick={() => {setEditClient(client); setClientForm(client); setModal('client_manager');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"><i className="ph-bold ph-pencil"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'subscribers' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Mensalistas</h3>
+                                        <button onClick={() => {setEditSubscriber(null); setSubscriberForm({name:'', plate:'', model:'', plan:'Integral', dueDay: 10, active: true}); setModal('subscriber_manager');}} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Mensalista</span></button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {subscribers.map(s => (
+                                            <div key={s.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
+                                                <div className="absolute top-0 right-0 p-2"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${s.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{s.active ? 'Ativo' : 'Inativo'}</span></div>
+                                                <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center font-bold text-white">{s.name.charAt(0)}</div><div><h4 className="font-bold text-white">{s.name}</h4><p className="text-xs text-slate-400">Vencimento dia {s.dueDay}</p></div></div>
+                                                <div className="bg-slate-900 p-3 rounded text-sm mb-3"><div className="flex justify-between mb-1"><span className="text-slate-500">Placa</span><span className="font-mono font-bold text-white">{s.plate}</span></div><div className="flex justify-between"><span className="text-slate-500">Modelo</span><span className="text-slate-300">{s.model}</span></div></div>
+                                                <div className="flex gap-2"><button onClick={() => {setEditSubscriber(s); setSubscriberForm(s); setModal('subscriber_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button><button onClick={() => {if(confirm('Excluir mensalista?')) setSubscribers(prev => prev.filter(sub => sub.id !== s.id))}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'agreements' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl text-white">Parcerias e Convênios</h3><button onClick={()=>setModal('new_agreement')} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Convênio</span></button></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {agreements.map(a => (
+                                            <div key={a.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+                                                <div><h4 className="font-bold text-white">{a.name}</h4><p className="text-sm text-slate-400">Benefício: <span className="text-cyan-400 font-bold">{a.discountType === 'free_time' ? `${a.value} min Grátis` : `${a.value}% de Desconto`}</span></p></div>
+                                                <button className="p-3 text-red-400 hover:bg-slate-700 rounded" onClick={()=>{ if(confirm('Remover?')) setAgreements(agreements.filter(i=>i.id!==a.id)); }}><i className="ph-bold ph-trash"></i></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'config' && (
+                                <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="bg-slate-800 p-8 rounded-xl border border-slate-700">
+                                            <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Tabela de Preços & Config</h3>
+                                            <div className="space-y-5">
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Nome do Estacionamento</label><input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
+                                                
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-6">
+                                            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700">
+                                                <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Catálogo de Serviços</h3>
+                                                <div className="space-y-4 mb-6">
+                                                    <div className="flex gap-2">
+                                                        <input className="flex-1 bg-slate-900 border border-slate-700 p-4 rounded text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
+                                                        <input className="w-24 bg-slate-900 border border-slate-700 p-4 rounded text-white" type="number" placeholder="Valor" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
+                                                        
+                                                        {editingServiceId ? (
+                                                            <>
+                                                                <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Salvar"><i className="ph-bold ph-check"></i></button>
+                                                                <button onClick={cancelEditService} className="bg-slate-600 hover:bg-slate-500 text-white px-4 rounded font-bold" title="Cancelar"><i className="ph-bold ph-x"></i></button>
+                                                            </>
+                                                        ) : (
+                                                            <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold"><i className="ph-bold ph-plus"></i></button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                                    {servicesList.map(s => (
+                                                        <div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded border border-slate-700">
+                                                            <span className="text-white font-bold">{s.name}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-emerald-400 font-bold mr-2">{formatCurrency(s.price)}</span>
+                                                                <button onClick={() => handleEditService(s)} className="text-blue-400 hover:text-blue-300 p-2"><i className="ph-bold ph-pencil"></i></button>
+                                                                <button onClick={() => removeServiceConfig(s.id)} className="text-red-400 hover:text-red-300 p-2"><i className="ph-bold ph-trash"></i></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700">
+                                                <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Alterar Senha de Acesso</h3>
+                                                <div className="space-y-3">
+                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" type="password" placeholder="Senha Atual" value={passwordForm.current} onChange={e=>setPasswordForm({...passwordForm, current:e.target.value})} />
+                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" type="password" placeholder="Nova Senha" value={passwordForm.new} onChange={e=>setPasswordForm({...passwordForm, new:e.target.value})} />
+                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" type="password" placeholder="Confirmar Nova Senha" value={passwordForm.confirm} onChange={e=>setPasswordForm({...passwordForm, confirm:e.target.value})} />
+                                                    <button onClick={handleChangePassword} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded">Atualizar Senha</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pb-8">
+                                        <button onClick={saveConfig} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto">Salvar Alterações</button>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </main>
 
-                    {/* MODALS */}
-                    {modal === 'finance' && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-                            <div className="bg-slate-800 p-6 rounded w-full max-w-md">
-                                <h3 className="font-bold text-xl mb-4">{editingId ? 'Editar' : 'Novo'} Lançamento</h3>
-                                <div className="space-y-3">
-                                    <select className="w-full bg-slate-900 p-3 rounded" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option>Receita</option><option>Despesa</option></select>
-                                    <input className="w-full bg-slate-900 p-3 rounded" placeholder="Descrição" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} />
-                                    <input type="number" className="w-full bg-slate-900 p-3 rounded" placeholder="Valor" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} />
-                                    <input type="date" className="w-full bg-slate-900 p-3 rounded" value={financeForm.date} onChange={e=>setFinanceForm({...financeForm, date:e.target.value})} />
+                    {/* MODAIS */}
+                    {modal && (
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 ${modal.includes('print') || modal === 'camera_scan' ? 'print:p-0 print:bg-white' : ''}`}>
+                            
+                            {/* SERVIÇOS (ADD TO TICKET) */}
+                            {modal === 'service_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Adicionar Serviços</h3>
+                                    <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
+                                        {servicesList.map(service => { const isSelected = addServiceForm.selectedServices.find(s => s.id === service.id); return (<div key={service.id} onClick={() => toggleServiceSelection(service.id)} className={`p-4 rounded border cursor-pointer flex justify-between items-center transition ${isSelected ? 'bg-cyan-900/50 border-cyan-500' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}`}><span className="text-white">{service.name}</span><div className="flex items-center gap-2"><span className="text-emerald-400 font-bold">{formatCurrency(service.price)}</span>{isSelected && <i className="ph-fill ph-check-circle text-cyan-400"></i>}</div></div>) })}
+                                    </div>
+                                    <div className="flex justify-between items-center pt-4 border-t border-slate-700"><div className="text-sm text-slate-400">Total: <span className="text-white font-bold text-lg ml-1">{formatCurrency(addServiceForm.selectedServices.reduce((acc, s)=>acc+s.price,0))}</span></div><div className="flex gap-2"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400 font-bold">Cancelar</button><button onClick={handleAddServices} className="px-6 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar</button></div></div>
                                 </div>
-                                <div className="flex justify-end gap-2 mt-4">
-                                    <button onClick={()=>setModal(null)} className="px-4 py-2 text-slate-400">Cancelar</button>
-                                    <button onClick={handleFinanceSave} className="bg-emerald-600 px-4 py-2 rounded font-bold">Salvar</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                            )}
 
-                    {modal === 'print_entry' && activeTicket && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-                            <div className="bg-white text-black p-4 rounded w-[320px]">
-                                <div id="print-area" className="ticket-paper">
-                                    <div className="font-bold text-lg uppercase">{config.name}</div>
-                                    <div className="text-3xl font-mono font-bold my-4">{activeTicket.plate}</div>
-                                    <div>{new Date(activeTicket.entryTime).toLocaleString()}</div>
+                            {/* SERVICES TYPES MANAGER (NOVO) */}
+                            {modal === 'service_types' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Gerenciar Tipos de Serviços</h3>
+                                    <div className="space-y-4 mb-6">
+                                        <div className="flex gap-2">
+                                            <input className="flex-1 bg-slate-900 border border-slate-700 p-4 rounded text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
+                                            <input className="w-24 bg-slate-900 border border-slate-700 p-4 rounded text-white" type="number" placeholder="Valor" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
+                                            
+                                            {editingServiceId ? (
+                                                <>
+                                                    <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Salvar"><i className="ph-bold ph-check"></i></button>
+                                                    <button onClick={cancelEditService} className="bg-slate-600 hover:bg-slate-500 text-white px-4 rounded font-bold" title="Cancelar"><i className="ph-bold ph-x"></i></button>
+                                                </>
+                                            ) : (
+                                                <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Adicionar Novo"><i className="ph-bold ph-plus"></i></button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 border-t border-slate-700 pt-4">
+                                        {servicesList.map(s => (
+                                            <div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded border border-slate-700">
+                                                <span className="text-white font-bold">{s.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-emerald-400 font-bold mr-2">{formatCurrency(s.price)}</span>
+                                                    <button onClick={() => handleEditService(s)} className="text-blue-400 hover:text-blue-300 p-2"><i className="ph-bold ph-pencil"></i></button>
+                                                    <button onClick={() => removeServiceConfig(s.id)} className="text-red-400 hover:text-red-300 p-2"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-end mt-4"><button onClick={()=>setModal(null)} className="px-4 py-2 bg-slate-600 text-white rounded hover:bg-slate-500">Fechar</button></div>
                                 </div>
-                                <div className="flex gap-2 mt-4 no-print">
-                                    <button onClick={()=>window.print()} className="flex-1 bg-blue-600 text-white py-2 rounded font-bold">Imprimir</button>
-                                    <button onClick={()=>setModal(null)} className="flex-1 bg-slate-600 text-white py-2 rounded font-bold">Fechar</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                            )}
 
-                    {modal === 'exit_confirm' && activeTicket && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-                            <div className="bg-slate-800 p-6 rounded w-full max-w-sm">
-                                <h3 className="font-bold text-xl mb-4">Confirmar Saída</h3>
-                                <div className="bg-slate-900 p-4 rounded mb-4 text-center">
-                                    <div className="text-2xl font-bold font-mono mb-2">{activeTicket.plate}</div>
-                                    <div className="text-slate-400">Permanência: {Math.ceil((new Date() - new Date(activeTicket.entryTime)) / 60000)} min</div>
+                            {/* TICKET EDITOR MODAL (NOVO) */}
+                            {modal === 'edit_ticket' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Editar Veículo</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Placa</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" value={editTicketForm.plate} onChange={e=>setEditTicketForm({...editTicketForm, plate:e.target.value.toUpperCase()})} /></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Tipo</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={editTicketForm.type} onChange={e=>setEditTicketForm({...editTicketForm, type:e.target.value})}><option>Carro</option><option>Moto</option></select></div>
+                                        </div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Modelo</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={editTicketForm.model} onChange={e=>setEditTicketForm({...editTicketForm, model:e.target.value})} /></div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Observações</label><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-20" value={editTicketForm.notes} onChange={e=>setEditTicketForm({...editTicketForm, notes:e.target.value})}></textarea></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveTicketEdit} className="px-4 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar Alterações</button></div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={()=>setModal(null)} className="flex-1 py-3 text-slate-400 font-bold">Cancelar</button>
-                                    <button onClick={()=>{
-                                        const exitTime = new Date();
-                                        const durationMins = Math.ceil((exitTime - new Date(activeTicket.entryTime)) / 60000);
-                                        const hours = Math.ceil(durationMins / 60);
-                                        const total = hours * (activeTicket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour);
-                                        const finished = { ...activeTicket, exitTime: exitTime.toString(), durationMins, total, status: 'finished' };
-                                        
-                                        saveItem('history', finished);
-                                        deleteItem('tickets', activeTicket.id);
-                                        
-                                        if(!db) {
-                                            setTickets(p => p.filter(t => t.id !== activeTicket.id));
-                                            setHistory(p => [finished, ...p]);
-                                        }
-                                        setModal(null); notify('Saída registrada!');
-                                    }} className="flex-1 bg-red-600 text-white py-3 rounded font-bold">Confirmar</button>
+                            )}
+
+                            {/* OS PRINT */}
+                            {modal === 'print_os' && activeTicket && (
+                                <div className="bg-white text-black p-0 rounded shadow-2xl relative w-full md:w-[600px] max-h-[90vh] overflow-y-auto">
+                                    <div id="print-area" className="os-paper">
+                                        <div className="flex justify-between items-center border-b-2 border-black pb-4 mb-4"><div><h1 className="text-2xl font-bold italic">{config.name}</h1><p className="text-sm">Lava-rápido & Estacionamento</p><p className="text-sm">{config.address}</p></div><div className="text-right"><h2 className="text-xl font-bold">ORDEM DE SERVIÇO</h2><p className="text-lg font-mono">#{activeTicket.id}</p><p className="text-sm">{new Date().toLocaleString()}</p></div></div>
+                                        <div className="mb-6 p-4 border border-black bg-gray-100"><div className="grid grid-cols-2 gap-4"><div><strong>Placa:</strong> {activeTicket.plate}</div><div><strong>Modelo:</strong> {activeTicket.model}</div><div><strong>Entrada:</strong> {new Date(activeTicket.entryTime).toLocaleString()}</div><div><strong>Tipo:</strong> {activeTicket.type}</div></div></div>
+                                        <div className="mb-6"><h3 className="font-bold border-b border-black mb-2 uppercase">Serviços a Realizar</h3><table className="w-full text-sm"><thead><tr className="bg-gray-200 text-left"><th className="p-2">Descrição</th><th className="p-2 text-right">Valor</th></tr></thead><tbody>{activeTicket.services && activeTicket.services.map((s, i) => (<tr key={i} className="border-b"><td className="p-2">{s.name}</td><td className="p-2 text-right">{formatCurrency(s.price)}</td></tr>))}{(!activeTicket.services || activeTicket.services.length === 0) && <tr><td colSpan="2" className="p-4 text-center italic">Nenhum serviço listado.</td></tr>}</tbody><tfoot><tr><td className="p-2 font-bold text-right">TOTAL ESTIMADO:</td><td className="p-2 font-bold text-right text-lg">{formatCurrency((activeTicket.services || []).reduce((a,b)=>a+b.price, 0))}</td></tr></tfoot></table></div>
+                                        {activeTicket.notes && (<div className="mb-6"><strong>Observações / Avarias:</strong><p className="border p-2 min-h-[50px]">{activeTicket.notes} {activeTicket.damages ? activeTicket.damages.join(', ') : ''}</p></div>)}
+                                        <div className="mt-12 flex justify-between gap-8 text-center text-xs"><div className="flex-1 border-t border-black pt-2">Assinatura Técnico</div><div className="flex-1 border-t border-black pt-2">Assinatura Cliente</div></div>
+                                    </div>
+                                    <div className="p-4 bg-slate-100 flex gap-2 no-print justify-center border-t"><button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-3 rounded text-sm font-bold flex-1"><i className="ph-bold ph-printer"></i> Imprimir</button><button onClick={()=>setModal(null)} className="bg-slate-600 text-white px-6 py-3 rounded text-sm font-bold flex-1">Fechar</button></div>
                                 </div>
-                            </div>
+                            )}
+
+                            {/* ENTRY PRINT */}
+                            {modal === 'print_entry' && activeTicket && (
+                                <div className="bg-white text-black p-0 rounded shadow-2xl relative w-full md:w-[320px]">
+                                    <div id="print-area" className="ticket-paper w-full">
+                                        <div className="font-bold text-lg uppercase mb-2">{config.name}</div><div className="text-xs">{config.address}</div><div className="ticket-divider"></div>
+                                        <div className="font-bold text-xl uppercase mb-1">TICKET DE ENTRADA</div><div className="text-3xl font-mono font-bold my-4">{activeTicket.plate}</div>
+                                        <div className="text-left text-sm space-y-1 mb-4"><div className="flex justify-between"><span>Entrada:</span> <span>{new Date(activeTicket.entryTime).toLocaleDateString()} {new Date(activeTicket.entryTime).toLocaleTimeString()}</span></div><div className="flex justify-between"><span>Tipo:</span> <span>{activeTicket.type}</span></div>{activeTicket.isSubscriber && <div className="flex justify-between font-bold"><span>CLIENTE:</span> <span>MENSALISTA</span></div>}</div>
+                                        {(activeTicket.damages.length > 0 || activeTicket.notes) && <div className="text-left text-xs mb-4 border border-black p-1"><div className="font-bold uppercase border-b border-black mb-1">AVARIAS / OBS:</div>{activeTicket.damages.length > 0 && <div>{activeTicket.damages.join(', ')}</div>}{activeTicket.notes && <div>{activeTicket.notes}</div>}</div>}
+                                        <div className="barcode mb-2"></div><div className="text-xs text-center">{activeTicket.id}</div><div className="ticket-divider"></div><div className="text-[10px] text-center">OBRIGATÓRIA A APRESENTAÇÃO PARA SAÍDA.</div>
+                                    </div>
+                                    <div className="p-4 bg-slate-100 flex gap-2 no-print justify-center border-t"><button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-3 rounded text-sm font-bold flex-1"><i className="ph-bold ph-printer"></i> Imprimir</button><button onClick={()=>setModal(null)} className="bg-slate-600 text-white px-6 py-3 rounded text-sm font-bold flex-1">Fechar</button></div>
+                                </div>
+                            )}
+
+                            {/* CONFIRM EXIT */}
+                            {modal === 'confirm_exit' && activeTicket && (
+                                <div className="bg-slate-800 text-white w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Confirmar Saída</h3>
+                                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-700 mb-4 space-y-2">
+                                        <div className="flex justify-between items-center"><span className="text-slate-400">Veículo</span><span className="font-mono font-bold text-xl">{activeTicket.plate}</span></div>
+                                        <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Permanência</span><span>{activeTicket.durationHours}h ({activeTicket.durationMins}m)</span></div>
+                                        <div className="border-t border-slate-700 pt-2 mt-2 space-y-1"><div className="flex justify-between text-sm"><span className="text-slate-400">Estacionamento:</span><span>{formatCurrency(activeTicket.parkingFee)}</span></div><div className="flex justify-between text-sm"><span className="text-slate-400">Serviços:</span><span>{formatCurrency(activeTicket.servicesFee)}</span></div></div>
+                                        <div className="border-t border-slate-700 pt-2 mt-2"><label className="text-xs text-slate-400 mb-1 block">Validar Selo / Convênio</label><select className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-sm text-white" onChange={(e) => calculateTotalWithAgreement(activeTicket, e.target.value)}><option value="">Nenhum</option>{agreements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                                        {!activeTicket.isSubscriber && (<div className="border-t border-slate-700 pt-2 mt-2"><label className="text-xs text-slate-400 mb-1 block">Forma de Pagamento</label><div className="grid grid-cols-3 gap-2">{['Dinheiro', 'Cartão', 'Pix'].map(m => <button key={m} onClick={()=>setPaymentMethod(m)} className={`py-2 px-2 rounded text-xs font-bold border ${paymentMethod === m ? 'bg-cyan-600 border-cyan-600 text-white' : 'border-slate-600 text-slate-400'}`}>{m}</button>)}</div></div>)}
+                                        <div className="border-t border-slate-700 pt-3 flex justify-between items-center"><span className="text-lg font-bold">TOTAL A PAGAR</span><div className="text-right">{activeTicket.subTotal !== activeTicket.total && <span className="block text-xs text-slate-500 line-through">{formatCurrency(activeTicket.subTotal)}</span>}<span className="text-3xl font-bold text-emerald-400">{activeTicket.isSubscriber ? 'R$ 0,00' : formatCurrency(activeTicket.total)}</span></div></div>
+                                    </div>
+                                    <div className="flex justify-end gap-3"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400 font-bold">Cancelar</button><button onClick={confirmExit} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-check-circle"></i> Receber</button></div>
+                                </div>
+                            )}
+
+                            {/* EXIT PRINT */}
+                            {modal === 'print_exit' && activeTicket && (
+                                <div className="bg-white text-black p-0 rounded shadow-2xl relative w-full md:w-[320px]">
+                                    <div id="print-area" className="ticket-paper w-full">
+                                        <div className="font-bold text-lg uppercase mb-2">{config.name}</div><div className="text-xs">{config.address}</div><div className="ticket-divider"></div>
+                                        <div className="font-bold text-xl uppercase mb-1">RECIBO DE PAGAMENTO</div>
+                                        <div className="text-left text-sm space-y-1 mb-4 mt-4">
+                                            <div className="flex justify-between"><span>Placa:</span> <span className="font-bold">{activeTicket.plate}</span></div>
+                                            <div className="flex justify-between"><span>Entrada:</span> <span>{new Date(activeTicket.entryTime).toLocaleDateString()} {new Date(activeTicket.entryTime).toLocaleTimeString()}</span></div>
+                                            <div className="flex justify-between"><span>Saída:</span> <span>{new Date(activeTicket.exitTime).toLocaleDateString()} {new Date(activeTicket.exitTime).toLocaleTimeString()}</span></div>
+                                            <div className="flex justify-between"><span>Permanência:</span> <span>{activeTicket.durationHours}h {activeTicket.durationMins % 60}m</span></div>
+                                        </div>
+                                        <div className="ticket-divider"></div>
+                                        <div className="text-sm space-y-1"><div className="flex justify-between"><span>Estacionamento:</span> <span>{formatCurrency(activeTicket.parkingFee)}</span></div><div className="flex justify-between"><span>Serviços:</span> <span>{formatCurrency(activeTicket.servicesFee)}</span></div>{activeTicket.appliedAgreement && <div className="flex justify-between text-xs italic"><span>Desc. ({activeTicket.appliedAgreement.name}):</span> <span>-{formatCurrency(activeTicket.subTotal - activeTicket.total)}</span></div>}</div>
+                                        <div className="ticket-divider"></div>
+                                        <div className="flex justify-between font-bold text-xl my-2"><span>TOTAL:</span><span>{activeTicket.isSubscriber ? 'ISENTO' : formatCurrency(activeTicket.total)}</span></div>
+                                        <div className="ticket-divider"></div>
+                                        <div className="text-[10px] text-center">OBRIGADO PELA PREFERÊNCIA.<br/>VOLTE SEMPRE!</div>
+                                    </div>
+                                    <div className="p-4 bg-slate-100 flex gap-2 no-print justify-center border-t"><button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-3 rounded text-sm font-bold flex-1"><i className="ph-bold ph-printer"></i> Imprimir</button><button onClick={()=>setModal(null)} className="bg-slate-600 text-white px-6 py-3 rounded text-sm font-bold flex-1">Fechar</button></div>
+                                </div>
+                            )}
+
+                            {/* VISTORIA MODAL */}
+                            {modal === 'checklist' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Nova Vistoria Veicular</h3>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><label className="text-xs text-slate-400 mb-1 block">Placa</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" value={checklistForm.plate} onChange={e=>setChecklistForm({...checklistForm, plate:e.target.value.toUpperCase()})} /></div>
+                                            <div><label className="text-xs text-slate-400 mb-1 block">Modelo</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={checklistForm.model} onChange={e=>setChecklistForm({...checklistForm, model:e.target.value})} /></div>
+                                        </div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Nível de Combustível</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={checklistForm.fuel} onChange={e=>setChecklistForm({...checklistForm, fuel:e.target.value})}><option>Reserva</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Cheio</option></select></div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Avarias (Selecione)</label><div className="grid grid-cols-2 gap-2">{commonDamages.map(item => (<div key={item} className="flex items-center gap-2"><input type="checkbox" checked={checklistForm.items.includes(item)} onChange={e => { if(e.target.checked) setChecklistForm({...checklistForm, items: [...checklistForm.items, item]}); else setChecklistForm({...checklistForm, items: checklistForm.items.filter(i => i !== item)}); }} className="accent-cyan-500 w-5 h-5" /><label className="text-sm text-slate-300">{item}</label></div>))}</div></div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Observações</label><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-20" value={checklistForm.notes} onChange={e=>setChecklistForm({...checklistForm, notes:e.target.value})}></textarea></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveChecklist} className="px-4 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar Vistoria</button></div>
+                                </div>
+                            )}
+
+                            {/* FINANCEIRO MODAL */}
+                            {modal === 'finance' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editingFinanceId ? 'Editar Lançamento' : 'Novo Lançamento'}</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Tipo</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option value="Receita">Receita (+)</option><option value="Despesa">Despesa (-)</option></select></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Data</label><input type="date" className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.date} onChange={e=>setFinanceForm({...financeForm, date:e.target.value})} /></div>
+                                        </div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Descrição</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Ex: Conta de Luz" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} /></div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Valor (R$)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} /></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Categoria</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Ex: Fixo" value={financeForm.category} onChange={e=>setFinanceForm({...financeForm, category:e.target.value})} /></div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-slate-400 mb-1 block">Anexo / Boleto</label>
+                                            <input type="file" className="text-xs text-slate-400" onChange={e => {
+                                                const file = e.target.files[0];
+                                                if(file){
+                                                    if(file.size > 500000) return notify('Arquivo muito grande (Máx 500kb)', 'error');
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => setFinanceForm({...financeForm, file: reader.result, fileName: file.name});
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveFinance} className="px-4 py-3 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700">Confirmar</button></div>
+                                </div>
+                            )}
+
+                            {/* EQUIPE MODAL */}
+                            {modal === 'team' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Novo Funcionário</h3>
+                                    <div className="space-y-3">
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome Completo" value={teamForm.name} onChange={e=>setTeamForm({...teamForm, name:e.target.value})} />
+                                        <div className="flex gap-3">
+                                            <select className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded text-white" value={teamForm.role} onChange={e=>setTeamForm({...teamForm, role:e.target.value})}><option>Operador</option><option>Gerente</option><option>Caixa</option></select>
+                                            <select className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded text-white" value={teamForm.shift} onChange={e=>setTeamForm({...teamForm, shift:e.target.value})}><option>Manhã</option><option>Tarde</option><option>Noite</option></select>
+                                        </div>
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Telefone/Celular" value={teamForm.phone} onChange={e=>setTeamForm({...teamForm, phone:e.target.value})} />
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveTeam} className="px-4 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar Cadastro</button></div>
+                                </div>
+                            )}
+
+                            {/* CONVÊNIO MODAL */}
+                            {modal === 'new_agreement' && (
+                                <div className="bg-slate-800 text-white w-full max-w-sm p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Novo Convênio</h3>
+                                    <div className="space-y-4">
+                                        <div><label className="text-xs text-slate-400 block mb-1">Nome do Parceiro</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Ex: Academia X" value={agreementForm.name} onChange={e=>setAgreementForm({...agreementForm, name:e.target.value})} /></div>
+                                        <div><label className="text-xs text-slate-400 block mb-1">Tipo de Desconto</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={agreementForm.discountType} onChange={e=>setAgreementForm({...agreementForm, discountType:e.target.value})}><option value="free_time">Tempo Grátis (Minutos)</option><option value="percentage">Desconto (%)</option></select></div>
+                                        <div><label className="text-xs text-slate-400 block mb-1">Valor</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={agreementForm.value} onChange={e=>setAgreementForm({...agreementForm, value:e.target.value})} /></div>
+                                        <button onClick={saveAgreement} className="w-full bg-cyan-600 py-3 rounded font-bold">Salvar</button>
+                                        <button onClick={()=>setModal(null)} className="w-full text-slate-400 py-3 text-sm">Cancelar</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* FORNECEDOR MODAL */}
+                            {modal === 'supplier_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+                                    <div className="space-y-3">
+                                        <div><label className="text-xs text-slate-400 block mb-1">Nome da Empresa</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm, name:e.target.value})} /></div>
+                                        <div><label className="text-xs text-slate-400 block mb-1">Contato / Telefone</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={supplierForm.contact} onChange={e=>setSupplierForm({...supplierForm, contact:e.target.value})} /></div>
+                                        <div><label className="text-xs text-slate-400 block mb-1">Categoria</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={supplierForm.category} onChange={e=>setSupplierForm({...supplierForm, category:e.target.value})}><option>Peças</option><option>Produtos Limpeza</option><option>Manutenção</option><option>Serviços</option><option>Outros</option></select></div>
+                                        <div><label className="text-xs text-slate-400 block mb-1">Observações</label><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-20" value={supplierForm.notes} onChange={e=>setSupplierForm({...supplierForm, notes:e.target.value})}></textarea></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveSupplier} className="px-4 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar</button></div>
+                                </div>
+                            )}
+
+                            {/* MENSALISTA MODAL */}
+                            {modal === 'subscriber_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editSubscriber ? 'Editar Mensalista' : 'Novo Mensalista'}</h3>
+                                    <div className="space-y-3">
+                                        <div><label className="text-xs text-slate-400 block mb-1">Nome do Cliente</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={subscriberForm.name} onChange={e=>setSubscriberForm({...subscriberForm, name:e.target.value})} /></div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Placa</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" value={subscriberForm.plate} onChange={e=>setSubscriberForm({...subscriberForm, plate:e.target.value.toUpperCase()})} /></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Modelo</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={subscriberForm.model} onChange={e=>setSubscriberForm({...subscriberForm, model:e.target.value})} /></div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Plano</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={subscriberForm.plan} onChange={e=>setSubscriberForm({...subscriberForm, plan:e.target.value})}><option>Integral</option><option>Diurno</option><option>Noturno</option></select></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Dia Vencimento</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={subscriberForm.dueDay} onChange={e=>setSubscriberForm({...subscriberForm, dueDay:e.target.value})} /></div>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2"><input type="checkbox" checked={subscriberForm.active} onChange={e=>setSubscriberForm({...subscriberForm, active:e.target.checked})} className="w-5 h-5 accent-emerald-500" /><label className="text-sm text-slate-300">Contrato Ativo</label></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveSubscriber} className="px-4 py-3 bg-violet-600 text-white rounded font-bold hover:bg-violet-700">Salvar</button></div>
+                                </div>
+                            )}
+
+                            {/* CLIENTE MODAL (NOVO) */}
+                            {modal === 'client_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editClient ? 'Editar Cliente' : 'Novo Cliente'}</h3>
+                                    <div className="space-y-3">
+                                        <div><label className="text-xs text-slate-400 block mb-1">Nome</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={clientForm.name} onChange={e=>setClientForm({...clientForm, name:e.target.value})} /></div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Telefone</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={clientForm.phone} onChange={e=>setClientForm({...clientForm, phone:e.target.value})} /></div>
+                                            <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">Placa (Opcional)</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" value={clientForm.plate} onChange={e=>setClientForm({...clientForm, plate:e.target.value.toUpperCase()})} /></div>
+                                        </div>
+                                        {editClient && (<div><label className="text-xs text-slate-400 block mb-1">Pontos Fidelidade</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" value={clientForm.points} onChange={e=>setClientForm({...clientForm, points:parseInt(e.target.value) || 0})} /></div>)}
+                                        <div><label className="text-xs text-slate-400 block mb-1">Observações</label><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-20" value={clientForm.notes} onChange={e=>setClientForm({...clientForm, notes:e.target.value})}></textarea></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400">Cancelar</button><button onClick={saveClient} className="px-4 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar</button></div>
+                                </div>
+                            )}
+
                         </div>
                     )}
                 </div>
