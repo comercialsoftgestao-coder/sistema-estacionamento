@@ -675,7 +675,10 @@
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
                                         <h3 className="font-bold text-xl text-white">Serviços e Lava-rápido</h3>
-                                        <button onClick={() => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); setModal('service_types'); }} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-gear"></i> <span className="hidden md:inline">Gerenciar Serviços</span></button>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => { setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); setModal('new_wash_entry'); }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Nova Lavagem</span></button>
+                                            <button onClick={() => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); setModal('service_types'); }} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-gear"></i> <span className="hidden md:inline">Gerenciar Serviços</span></button>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">
                                         {tickets.filter(t => t.plate.includes(filterPlate)).map(t => {
