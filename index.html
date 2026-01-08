@@ -924,12 +924,15 @@
 
                             {tab === 'agreements' && (
                                 <div className="space-y-6 animate-fade-in">
-                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl text-white">Parcerias e Convênios</h3><button onClick={()=>setModal('new_agreement')} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Convênio</span></button></div>
+                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl text-white">Parcerias e Convênios</h3><button onClick={()=>{setEditingAgreementId(null); setAgreementForm({name: '', discountType: 'free_time', value: 0}); setModal('new_agreement')}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Convênio</span></button></div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {agreements.map(a => (
                                             <div key={a.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
                                                 <div><h4 className="font-bold text-white">{a.name}</h4><p className="text-sm text-slate-400">Benefício: <span className="text-cyan-400 font-bold">{a.discountType === 'free_time' ? `${a.value} min Grátis` : `${a.value}% de Desconto`}</span></p></div>
-                                                <button className="p-3 text-red-400 hover:bg-slate-700 rounded" onClick={()=>{ if(confirm('Remover?')) { deleteItem('agreements', a.id); if(!db) setAgreements(agreements.filter(i=>i.id!==a.id)); notify('Convênio removido!'); } }}><i className="ph-bold ph-trash"></i></button>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => {setEditingAgreementId(a.id); setAgreementForm(a); setModal('new_agreement');}} className="p-3 text-blue-400 hover:bg-slate-700 rounded" title="Editar"><i className="ph-bold ph-pencil"></i></button>
+                                                    <button className="p-3 text-red-400 hover:bg-slate-700 rounded" onClick={()=>{ if(confirm('Remover?')) { deleteItem('agreements', a.id); if(!db) setAgreements(agreements.filter(i=>i.id!==a.id)); notify('Convênio removido!'); } }} title="Excluir"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -1285,7 +1288,7 @@
                              {/* AGREEMENT MODAL */}
                              {modal === 'new_agreement' && (
                                 <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Novo Convênio</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editingAgreementId ? 'Editar Convênio' : 'Novo Convênio'}</h3>
                                     <div className="space-y-3">
                                         <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome da Loja / Parceiro" value={agreementForm.name} onChange={e=>setAgreementForm({...agreementForm, name:e.target.value})} />
                                         <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={agreementForm.discountType} onChange={e=>setAgreementForm({...agreementForm, discountType:e.target.value})}><option value="free_time">Tempo Grátis (min)</option><option value="percentage">Desconto (%)</option></select>
