@@ -170,20 +170,30 @@
         const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
         const formatDate = (date) => new Date(date).toLocaleString('pt-BR');
 
-        const BrandLogo = () => (
-            <div className="flex items-center gap-2">
-                <div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded flex items-center justify-center shadow-lg shadow-cyan-900/50">
-                    <i className="ph-fill ph-car text-white text-xl md:text-2xl"></i>
+        // COMPONENTE LOGO DINÂMICA
+        const BrandLogo = ({ title }) => {
+            const displayText = title && title.trim() !== '' ? title : "PARKING PRO";
+            const isDefault = displayText.replace(/\s/g, '').toUpperCase() === 'PARKINGPRO';
+
+            return (
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded flex items-center justify-center shadow-lg shadow-cyan-900/50 flex-shrink-0">
+                        <i className="ph-fill ph-car text-white text-xl md:text-2xl"></i>
+                    </div>
+                    <div className="min-w-0">
+                        {isDefault ? (
+                            <h1 className="text-lg md:text-xl font-black italic tracking-tighter text-white leading-none whitespace-nowrap">PARKING<span className="text-cyan-400">PRO</span></h1>
+                        ) : (
+                            <h1 className="text-lg md:text-xl font-black italic tracking-tighter text-white leading-none uppercase truncate max-w-[180px]">{displayText}</h1>
+                        )}
+                        <p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Sistema Inteligente</p>
+                    </div>
                 </div>
-                <div>
-                    <h1 className="text-lg md:text-xl font-black italic tracking-tighter text-white leading-none">PARKING<span className="text-cyan-400">PRO</span></h1>
-                    <p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Sistema Inteligente</p>
-                </div>
-            </div>
-        );
+            );
+        };
 
         // --- TELA DE LOGIN ---
-        const LoginScreen = ({ onLogin }) => {
+        const LoginScreen = ({ onLogin, systemName }) => {
             const [u, setU] = useState('');
             const [p, setP] = useState('');
             const [remember, setRemember] = useState(false);
@@ -207,7 +217,7 @@
                 <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden px-4">
                     <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1506521781263-d8422e82f27a?q=80&w=2070&auto=format&fit=crop")', backgroundSize: 'cover', backgroundPosition: 'center'}}></div>
                     <div className="bg-slate-900/90 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-sm z-10 border border-slate-800">
-                        <div className="flex justify-center mb-6"><BrandLogo /></div>
+                        <div className="flex justify-center mb-6"><BrandLogo title={systemName} /></div>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <input className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-base md:text-sm text-white focus:border-cyan-500 outline-none transition" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
                             <input type="password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-base md:text-sm text-white focus:border-cyan-500 outline-none transition" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
@@ -234,7 +244,8 @@
                 return storedCreds ? JSON.parse(storedCreds) : { user: 'admin', pass: '1234' };
             });
 
-            const [config, setConfig] = useState({ name: 'Parking Center', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
+            // Configuração padrão sem nome definido para ativar fallback
+            const [config, setConfig] = useState({ name: '', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
 
             const [tickets, setTickets] = useState([]); 
             const [history, setHistory] = useState([]); 
@@ -613,7 +624,7 @@
                 return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
             }, [tickets, history, subscribers, finances, config]);
 
-            if (view === 'login') return <LoginScreen onLogin={handleLogin} />;
+            if (view === 'login') return <LoginScreen onLogin={handleLogin} systemName={config.name} />;
 
             return (
                 <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
@@ -625,7 +636,7 @@
                     {/* Added 'flex flex-col' here to ensure footer stays at bottom */}
                     <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 transition-transform duration-300 ease-in-out md:relative md:translate-x-0 flex flex-col ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-                            <BrandLogo />
+                            <BrandLogo title={config.name} />
                             <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button>
                         </div>
                         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
