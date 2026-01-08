@@ -285,7 +285,7 @@
             const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', category: 'Peças', notes: '' });
             const [subscriberForm, setSubscriberForm] = useState({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true });
             const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
-            const [editTicketForm, setEditTicketForm] = useState({ plate: '', model: '', type: 'Carro', notes: '' }); // Estado adicionado para edição
+            const [editTicketForm, setEditTicketForm] = useState({ plate: '', model: '', type: 'Carro', notes: '' });
 
             const commonDamages = ['Arranhões', 'Amassados', 'Vidro Trincado', 'Farol Quebrado', 'Pneu Murcho', 'Antena Quebrada', 'Retrovisor Danif.'];
 
@@ -339,9 +339,8 @@
                 }, [db, view]);
             };
 
-            // DATA SEEDING (Modificado para usar defaults na lista de serviços)
+            // DATA SEEDING
             const getDemoData = () => {
-                 // Demo Data kept for fallback, but Services will be populated
                 const demoServices = [
                     {id: 's1', name: 'Lavagem Simples', price: 40.00}, 
                     {id: 's2', name: 'Lavagem Completa + Cera', price: 80.00}, 
@@ -455,15 +454,50 @@
             };
 
             const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); if(!db) setChecklists(prev => [newChecklist, ...prev]); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
-            const saveFinance = () => { const newFinance = { ...financeForm, id: Date.now(), value: parseFloat(financeForm.value) }; saveItem('finances', newFinance); if(!db) setFinances(prev => [newFinance, ...prev]); setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' }); setModal(null); notify('Lançamento salvo!'); };
-            const saveTeam = () => { const newMember = { ...teamForm, id: Date.now() }; saveItem('team', newMember); if(!db) setTeam(prev => [...prev, newMember]); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setModal(null); notify('Funcionário cadastrado!'); };
-            const saveAgreement = () => { const id = Date.now(); const newA = {...agreementForm, id}; saveItem('agreements', newA); if(!db) setAgreements([...agreements, newA]); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); notify('Convênio cadastrado!'); };
             
             // HELPERS FOR TEAM/SUPPLIER/CLIENT ETC
             const [editingTeamId, setEditingTeamId] = useState(null);
             const [editingAgreementId, setEditingAgreementId] = useState(null);
             const [editingFinanceId, setEditingFinanceId] = useState(null);
+            const [editingItemIsHistory, setEditingItemIsHistory] = useState(false); // Track if we are editing a history item
 
+            const saveFinance = () => { 
+                const val = parseFloat(financeForm.value);
+                
+                if (editingFinanceId) {
+                    // EDITING EXISTING
+                    if (editingItemIsHistory) {
+                        // Update History Item (Only update fields that make sense to edit in finance: total/value and date)
+                        const original = history.find(h => h.id === editingFinanceId);
+                        if (original) {
+                            const updated = { ...original, total: val, exitTime: new Date(financeForm.date + 'T12:00:00').toISOString() };
+                            saveItem('history', updated, editingFinanceId);
+                            if(!db) setHistory(prev => prev.map(h => h.id === editingFinanceId ? updated : h));
+                        }
+                    } else {
+                        // Update Finance Item
+                        const updated = { ...financeForm, id: editingFinanceId, value: val };
+                        saveItem('finances', updated, editingFinanceId);
+                        if(!db) setFinances(prev => prev.map(f => f.id === editingFinanceId ? updated : f));
+                    }
+                    notify('Atualizado!');
+                } else {
+                    // NEW ITEM
+                    const newFinance = { ...financeForm, id: Date.now(), value: val }; 
+                    saveItem('finances', newFinance); 
+                    if(!db) setFinances(prev => [newFinance, ...prev]); 
+                    notify('Lançamento salvo!');
+                }
+                
+                setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' }); 
+                setModal(null); 
+                setEditingFinanceId(null);
+                setEditingItemIsHistory(false);
+            };
+
+            const saveTeam = () => { const newMember = { ...teamForm, id: Date.now() }; saveItem('team', newMember); if(!db) setTeam(prev => [...prev, newMember]); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setModal(null); notify('Funcionário cadastrado!'); };
+            const saveAgreement = () => { const id = Date.now(); const newA = {...agreementForm, id}; saveItem('agreements', newA); if(!db) setAgreements([...agreements, newA]); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); notify('Convênio cadastrado!'); };
+            
             const handleTeamSave = () => {
                 if(!teamForm.name) return notify('Nome obrigatório', 'error');
                 const id = editingTeamId || Date.now();
@@ -504,8 +538,36 @@
             };
             const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); if(!db) setTickets(tickets.filter(t => t.id !== id)); notify('Veículo excluído'); } };
 
-            const handleEditFinance = (item) => { setEditingFinanceId(item.id); setFinanceForm(item); setModal('finance'); };
-            const handleDeleteFinance = (id) => { if(confirm('Excluir lançamento?')) { deleteItem('finances', id); if(!db) setFinances(finances.filter(f => f.id !== id)); notify('Excluído!'); } };
+            // FINANCE ACTIONS UPDATED
+            const handleEditFinance = (item) => { 
+                setEditingFinanceId(item.id); 
+                setEditingItemIsHistory(!!item.isHistory); // Flag if it's from history
+                
+                // Populate form with item data (mapping fields if history)
+                setFinanceForm({
+                    type: item.type,
+                    description: item.isHistory ? `Ticket #${item.id} - ${item.plate}` : item.description,
+                    value: item.value || item.total, // history uses total, finance uses value
+                    date: item.date ? item.date.split('T')[0] : '',
+                    category: item.category || 'Estacionamento',
+                    file: item.file || null,
+                    fileName: item.fileName || ''
+                }); 
+                setModal('finance'); 
+            };
+
+            const handleDeleteFinance = (item) => { 
+                if(confirm('Excluir este lançamento permanentemente?')) { 
+                    if (item.isHistory) {
+                        deleteItem('history', item.id);
+                        if(!db) setHistory(history.filter(h => h.id !== item.id));
+                    } else {
+                        deleteItem('finances', item.id); 
+                        if(!db) setFinances(finances.filter(f => f.id !== item.id)); 
+                    }
+                    notify('Excluído com sucesso!'); 
+                } 
+            };
 
             // SERVICE CONFIG HANDLERS
             const saveServiceConfig = () => {
@@ -721,7 +783,7 @@
                                                     <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4">Categoria</th><th className="p-4 text-center">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Anexo</th><th className="p-4 text-center">Ações</th></tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-700">
-                                                    {[...history.map(h => ({...h, date: h.exitTime, desc: `Ticket #${h.id} - ${h.plate}`, type: 'Receita', cat: 'Estacionamento', value: h.total})), 
+                                                    {[...history.map(h => ({...h, isHistory: true, date: h.exitTime, desc: `Ticket #${h.id} - ${h.plate}`, type: 'Receita', cat: 'Estacionamento', value: h.total})), 
                                                       ...finances.map(f => ({...f, desc: f.description, cat: f.category}))]
                                                       .sort((a, b) => new Date(b.date) - new Date(a.date))
                                                       .slice(0, 100)
@@ -736,12 +798,10 @@
                                                                 {item.file && <a href={item.file} download={item.fileName} className="text-cyan-400 hover:text-cyan-300" title="Baixar Boleto/Anexo"><i className="ph-bold ph-file-arrow-down text-lg"></i></a>}
                                                             </td>
                                                             <td className="p-4 text-center">
-                                                                {!item.isHistory && (
-                                                                    <div className="flex items-center justify-center gap-2">
-                                                                        <button onClick={() => handleEditFinance(item)} className="text-blue-400 hover:text-blue-300" title="Editar"><i className="ph-bold ph-pencil"></i></button>
-                                                                        <button onClick={() => handleDeleteFinance(item.id)} className="text-red-400 hover:text-red-300" title="Excluir"><i className="ph-bold ph-trash"></i></button>
-                                                                    </div>
-                                                                )}
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <button onClick={() => handleEditFinance(item)} className="text-blue-400 hover:text-blue-300" title="Editar"><i className="ph-bold ph-pencil"></i></button>
+                                                                    <button onClick={() => handleDeleteFinance(item)} className="text-red-400 hover:text-red-300" title="Excluir"><i className="ph-bold ph-trash"></i></button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -1202,7 +1262,7 @@
 
                             {/* LAVARÁPIDO: NOVA LAVAGEM MODAL */}
                             {modal === 'new_wash_entry' && (
-                                <div className="bg-slate-800 p-6 rounded w-full max-w-md max-h-[90vh] overflow-y-auto">
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
                                     <h3 className="text-xl font-bold mb-4">Nova Lavagem</h3>
                                     <div className="space-y-3">
                                         <div className="flex gap-2"><input className="w-full bg-slate-900 border-2 border-slate-700 p-3 rounded text-xl uppercase text-center font-bold" placeholder="ABC-1234" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} /></div>
