@@ -243,6 +243,7 @@
         // --- APP ---
         function App() {
             const [view, setView] = useState('login');
+            const [userRole, setUserRole] = useState('operator'); // 'admin' or 'operator'
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
             const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
@@ -251,7 +252,6 @@
                 return storedCreds ? JSON.parse(storedCreds) : { user: 'admin', pass: '1234' };
             });
 
-            // Configuração padrão sem nome definido para ativar fallback
             const [config, setConfig] = useState({ name: '', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
 
             const [tickets, setTickets] = useState([]); 
@@ -277,11 +277,9 @@
             const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
             const [loadingCamera, setLoadingCamera] = useState(false);
 
-            // Firebase State
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            // CONFIGURAÇÃO DO FIREBASE EMBUTIDA
             const FIREBASE_CONFIG = {
                 apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                 authDomain: "estacionamento-332eb.firebaseapp.com",
@@ -291,7 +289,6 @@
                 appId: "1:467691522256:web:6d4495458c494e753cb6d5"
             };
 
-            // Formulários
             const [entryForm, setEntryForm] = useState({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
             const [agreementForm, setAgreementForm] = useState({ name: '', discountType: 'free_time', value: 0 });
             const [checklistForm, setChecklistForm] = useState({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' });
@@ -320,7 +317,6 @@
                 config: 'Configurações'
             };
 
-            // --- FIREBASE INIT ---
             useEffect(() => {
                 if (!firebase.apps.length) {
                     try {
@@ -339,7 +335,6 @@
                 }
             }, []);
 
-            // --- SYNC DATA HOOK ---
             const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
                     if (db) {
@@ -349,7 +344,6 @@
                         }, err => console.error(`Sync error ${collectionName}`, err));
                         return () => unsubscribe();
                     } else if (view === 'app') {
-                        // LocalStorage Fallback
                         const stored = localStorage.getItem(`parkingpro_${collectionName}`);
                         if (stored) setState(JSON.parse(stored));
                         else if (fallbackData) setState(fallbackData);
@@ -357,7 +351,6 @@
                 }, [db, view]);
             };
 
-            // DATA SEEDING
             const getDemoData = () => {
                 const demoServices = [
                     {id: 's1', name: 'Lavagem Simples', price: 40.00}, 
@@ -376,7 +369,6 @@
                 return { demoServices };
             };
 
-            // Setup Sync for all collections
             useSync('tickets', setTickets, []);
             useSync('history', setHistory, []);
             useSync('finances', setFinances, []);
@@ -386,7 +378,6 @@
             useSync('suppliers', setSuppliers, []);
             useSync('agreements', setAgreements, []);
             
-            // Special handling for services list to populate defaults if empty on load
             useEffect(() => {
                 if (db) {
                     const unsubscribe = db.collection('servicesList').onSnapshot(snapshot => {
@@ -414,7 +405,6 @@
                 if (stored) setConfig(JSON.parse(stored));
             }, []);
 
-            // --- CRUD HELPERS (Hybrid) ---
             const saveItem = async (col, item, idOverride) => {
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() }; 
@@ -442,7 +432,21 @@
                 }
             }, [tickets, history, subscribers, agreements, checklists, finances, team, clients, suppliers, servicesList, config]);
 
-            const handleLogin = (u, p, remember) => { if (u === credentials.user && p === credentials.pass) { if (remember) { localStorage.setItem('parkingpro_saved_user', u); localStorage.setItem('parkingpro_saved_pass', p); } else { localStorage.removeItem('parkingpro_saved_user'); localStorage.removeItem('parkingpro_saved_pass'); } setView('app'); } else { notify('Acesso negado.', 'error'); } };
+            const handleLogin = (u, p, remember) => { 
+                if (u === credentials.user && p === credentials.pass) { 
+                    if (remember) { 
+                        localStorage.setItem('parkingpro_saved_user', u); 
+                        localStorage.setItem('parkingpro_saved_pass', p); 
+                    } else { 
+                        localStorage.removeItem('parkingpro_saved_user'); 
+                        localStorage.removeItem('parkingpro_saved_pass'); 
+                    } 
+                    setUserRole(u.toLowerCase() === 'admin' ? 'admin' : 'operator');
+                    setView('app'); 
+                } else { 
+                    notify('Acesso negado.', 'error'); 
+                } 
+            };
             
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
@@ -473,19 +477,16 @@
 
             const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); if(!db) setChecklists(prev => [newChecklist, ...prev]); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
             
-            // HELPERS FOR TEAM/SUPPLIER/CLIENT ETC
             const [editingTeamId, setEditingTeamId] = useState(null);
             const [editingAgreementId, setEditingAgreementId] = useState(null);
             const [editingFinanceId, setEditingFinanceId] = useState(null);
-            const [editingItemIsHistory, setEditingItemIsHistory] = useState(false); // Track if we are editing a history item
+            const [editingItemIsHistory, setEditingItemIsHistory] = useState(false); 
 
             const saveFinance = () => { 
                 const val = parseFloat(financeForm.value);
                 
                 if (editingFinanceId) {
-                    // EDITING EXISTING
                     if (editingItemIsHistory) {
-                        // Update History Item (Only update fields that make sense to edit in finance: total/value and date)
                         const original = history.find(h => h.id === editingFinanceId);
                         if (original) {
                             const updated = { ...original, total: val, exitTime: new Date(financeForm.date + 'T12:00:00').toISOString() };
@@ -493,14 +494,12 @@
                             if(!db) setHistory(prev => prev.map(h => h.id === editingFinanceId ? updated : h));
                         }
                     } else {
-                        // Update Finance Item
                         const updated = { ...financeForm, id: editingFinanceId, value: val };
                         saveItem('finances', updated, editingFinanceId);
                         if(!db) setFinances(prev => prev.map(f => f.id === editingFinanceId ? updated : f));
                     }
                     notify('Atualizado!');
                 } else {
-                    // NEW ITEM
                     const newFinance = { ...financeForm, id: Date.now(), value: val }; 
                     saveItem('finances', newFinance); 
                     if(!db) setFinances(prev => [newFinance, ...prev]); 
@@ -513,9 +512,6 @@
                 setEditingItemIsHistory(false);
             };
 
-            const saveTeam = () => { const newMember = { ...teamForm, id: Date.now() }; saveItem('team', newMember); if(!db) setTeam(prev => [...prev, newMember]); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setModal(null); notify('Funcionário cadastrado!'); };
-            const saveAgreement = () => { const id = Date.now(); const newA = {...agreementForm, id}; saveItem('agreements', newA); if(!db) setAgreements([...agreements, newA]); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); notify('Convênio cadastrado!'); };
-            
             const handleTeamSave = () => {
                 if(!teamForm.name) return notify('Nome obrigatório', 'error');
                 const id = editingTeamId || Date.now();
@@ -544,7 +540,6 @@
             const handleSupplierSave = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); if(!db) { if(editSupplier) setSuppliers(prev => prev.map(s => s.id === id ? newSupplier : s)); else setSuppliers(prev => [...prev, newSupplier]); } setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
             const handleSubscriberSave = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); if(!db) { if(editSubscriber) setSubscribers(prev => prev.map(s => s.id === id ? newSubscriber : s)); else setSubscribers(prev => [...prev, newSubscriber]); } setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
 
-            // TICKET ACTIONS
             const handleEditTicket = (t) => { setEditTicketForm({ plate: t.plate, model: t.model, type: t.type, notes: t.notes || '' }); setActiveTicket(t); setModal('edit_ticket'); };
             const saveTicketEdit = () => {
                 if(activeTicket) {
@@ -556,16 +551,13 @@
             };
             const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); if(!db) setTickets(tickets.filter(t => t.id !== id)); notify('Veículo excluído'); } };
 
-            // FINANCE ACTIONS UPDATED
             const handleEditFinance = (item) => { 
                 setEditingFinanceId(item.id); 
-                setEditingItemIsHistory(!!item.isHistory); // Flag if it's from history
-                
-                // Populate form with item data (mapping fields if history)
+                setEditingItemIsHistory(!!item.isHistory); 
                 setFinanceForm({
                     type: item.type,
                     description: item.isHistory ? `Ticket #${item.id} - ${item.plate}` : item.description,
-                    value: item.value || item.total, // history uses total, finance uses value
+                    value: item.value || item.total, 
                     date: item.date ? item.date.split('T')[0] : '',
                     category: item.category || 'Estacionamento',
                     file: item.file || null,
@@ -587,7 +579,6 @@
                 } 
             };
 
-            // SERVICE CONFIG HANDLERS
             const saveServiceConfig = () => {
                 if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error');
                 const price = parseFloat(serviceConfigForm.price);
@@ -607,7 +598,36 @@
             const removeServiceConfig = (id) => { deleteItem('servicesList', id); if(!db) setServicesList(servicesList.filter(s => s.id !== id)); };
             
             const downloadBills = () => { const dueBills = finances.filter(f => f.type === 'Despesa'); if (dueBills.length === 0) return notify('Nenhuma despesa.', 'info'); let textContent = "RELATÓRIO DE CONTAS\n===================\n\n"; dueBills.forEach(b => { textContent += `DATA: ${new Date(b.date).toLocaleDateString()}\nDESC: ${b.description}\nCAT: ${b.category}\nVALOR: ${formatCurrency(b.value)}\n----------------\n`; }); textContent += `\nTOTAL: ${formatCurrency(dueBills.reduce((acc, curr) => acc + curr.value, 0))}`; const blob = new Blob([textContent], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `boletos_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Download iniciado.'); };
-            const downloadDashboardReport = () => { const reportDate = new Date().toLocaleDateString(); let content = `RELATÓRIO GERENCIAL\nDATA: ${reportDate}\n\n`; content += `Ocupação: ${stats.occupied}/${config.totalSpots}\nReceita: ${formatCurrency(stats.totalRevenue)}\nDespesas: ${formatCurrency(stats.expenses)}\nBalanço: ${formatCurrency(stats.balance)}\n\nMOVIMENTAÇÕES:\n`; history.slice(0, 20).forEach(h => { content += `[${new Date(h.exitTime).toLocaleTimeString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; }); const blob = new Blob([content], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Relatorio_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Relatório baixado!'); };
+            
+            const downloadDashboardReport = (isMonthly = false) => { 
+                const reportDate = new Date();
+                const reportStr = isMonthly ? `MÊS: ${reportDate.getMonth() + 1}/${reportDate.getFullYear()}` : `DATA: ${reportDate.toLocaleDateString()}`;
+                
+                let content = `RELATÓRIO GERENCIAL (${isMonthly ? 'MENSAL' : 'DIÁRIO'})\n${reportStr}\n\n`;
+                
+                const filteredHistory = isMonthly ? history.filter(h => new Date(h.exitTime).getMonth() === reportDate.getMonth()) : history.filter(h => new Date(h.exitTime).toDateString() === reportDate.toDateString());
+                const filteredFinance = isMonthly ? finances.filter(f => new Date(f.date + 'T12:00:00').getMonth() === reportDate.getMonth()) : finances.filter(f => new Date(f.date + 'T12:00:00').toDateString() === reportDate.toDateString());
+
+                const rev = filteredHistory.reduce((acc, curr) => acc + curr.total, 0) + filteredFinance.filter(f => f.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0);
+                const exp = filteredFinance.filter(f => f.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0);
+
+                content += `Receita Total: ${formatCurrency(rev)}\nDespesas: ${formatCurrency(exp)}\nBalanço: ${formatCurrency(rev - exp)}\n\nMOVIMENTAÇÕES:\n`;
+                filteredHistory.forEach(h => { content += `[${new Date(h.exitTime).toLocaleString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; });
+                
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Relatorio_${isMonthly ? 'Mensal' : 'Diario'}_${new Date().toISOString().split('T')[0]}.txt`;
+                a.click();
+                notify('Relatório baixado!');
+            };
+
+            const sendWhatsAppTicket = (ticket) => {
+                const message = `Olá! Segue seu ticket do *${config.name || 'Estacionamento'}*:\n\n🚙 *Placa:* ${ticket.plate}\n🕒 *Entrada:* ${new Date(ticket.entryTime).toLocaleString()}\n\nObrigado pela preferência!`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+            };
+
             const addPoints = (clientId, amount) => { 
                 const c = clients.find(c=>c.id===clientId);
                 if(c) {
@@ -619,9 +639,6 @@
             };
             const handleChangePassword = () => { if (passwordForm.current !== credentials.pass) return notify('Senha incorreta.', 'error'); if (passwordForm.new !== passwordForm.confirm) return notify('Senhas não coincidem.', 'error'); if (!passwordForm.new) return notify('Senha vazia.', 'error'); const newCreds = { ...credentials, pass: passwordForm.new }; setCredentials(newCreds); localStorage.setItem('parkingpro_credentials', JSON.stringify(newCreds)); if (localStorage.getItem('parkingpro_saved_pass')) localStorage.setItem('parkingpro_saved_pass', passwordForm.new); setPasswordForm({ current: '', new: '', confirm: '' }); notify('Senha alterada!'); };
 
-            // Config Save (Local + Notification)
-            const saveConfig = () => { localStorage.setItem('parkingpro_config', JSON.stringify(config)); notify('Configurações salvas!'); };
-
             const stats = useMemo(() => {
                 const occupied = tickets.length; const free = config.totalSpots - occupied;
                 const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
@@ -631,16 +648,16 @@
                 return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
             }, [tickets, history, subscribers, finances, config]);
 
+            const saveConfig = () => { localStorage.setItem('parkingpro_config', JSON.stringify(config)); notify('Configurações salvas!'); };
+
             if (view === 'login') return <LoginScreen onLogin={handleLogin} systemName={config.name} />;
 
             return (
                 <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
                     <Toast {...toast} onClose={()=>setToast({...toast, show:false})} />
                     
-                    {/* Mobile Overlay */}
                     {isMobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>}
 
-                    {/* Added 'flex flex-col' here to ensure footer stays at bottom */}
                     <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 transition-transform duration-300 ease-in-out md:relative md:translate-x-0 flex flex-col ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center">
                             <BrandLogo title={config.name} />
@@ -648,17 +665,17 @@
                         </div>
                         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                             {[
-                                { id: 'dashboard', label: 'Visão Geral', icon: 'gauge' },
-                                { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile' },
-                                { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half' }, 
-                                { id: 'finance', label: 'Financeiro', icon: 'currency-dollar' },
-                                { id: 'suppliers', label: 'Fornecedores', icon: 'truck' }, 
-                                { id: 'team', label: 'Equipe', icon: 'users' },
-                                { id: 'clients', label: 'Fidelidade', icon: 'identification-card' },
-                                { id: 'subscribers', label: 'Mensalistas', icon: 'users-three' },
-                                { id: 'agreements', label: 'Convênios', icon: 'handshake' },
-                                { id: 'config', label: 'Configurações', icon: 'gear' },
-                            ].map(item => (
+                                { id: 'dashboard', label: 'Visão Geral', icon: 'gauge', roles: ['admin', 'operator'] },
+                                { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile', roles: ['admin', 'operator'] },
+                                { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half', roles: ['admin', 'operator'] }, 
+                                { id: 'finance', label: 'Financeiro', icon: 'currency-dollar', roles: ['admin', 'operator'] },
+                                { id: 'suppliers', label: 'Fornecedores', icon: 'truck', roles: ['admin'] }, 
+                                { id: 'team', label: 'Equipe', icon: 'users', roles: ['admin'] },
+                                { id: 'clients', label: 'Fidelidade', icon: 'identification-card', roles: ['admin', 'operator'] },
+                                { id: 'subscribers', label: 'Mensalistas', icon: 'users-three', roles: ['admin', 'operator'] },
+                                { id: 'agreements', label: 'Convênios', icon: 'handshake', roles: ['admin'] },
+                                { id: 'config', label: 'Configurações', icon: 'gear', roles: ['admin'] },
+                            ].filter(i => i.roles.includes(userRole)).map(item => (
                                 <button key={item.id} onClick={() => { setTab(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold ${tab === item.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                                     <i className={`ph ph-${item.icon} text-xl`}></i> {item.label}
                                 </button>
@@ -677,7 +694,6 @@
                              <div className="mt-4 pt-4 border-t border-slate-800">
                                 <p className="font-bold text-slate-500">© 2026 SoftGestão. Todos os direitos reservados.</p>
                                 <p className="mt-1">Pertence a Adriana Mendes da Cruz Sousa.</p>
-                                <p className="mt-1 text-[10px]">Todos os direitos e marca registrada são dela.</p>
                              </div>
                         </div>
                     </aside>
@@ -701,7 +717,11 @@
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                         <h3 className="font-bold text-xl text-white">Painel de Controle</h3>
-                                        <button onClick={downloadDashboardReport} className="w-full md:w-auto bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-download"></i> Relatório</button>
+                                        <div className="flex gap-2 w-full md:w-auto">
+                                            <a href="https://wa.me/5511932186193?text=Olá,%20preciso%20de%20suporte%20no%20Parking%20Pro." target="_blank" className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-whatsapp-logo"></i> Suporte</a>
+                                            <button onClick={() => downloadDashboardReport(true)} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-calendar"></i> Mensal</button>
+                                            <button onClick={() => downloadDashboardReport(false)} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-download"></i> Diário</button>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                         <div className="bg-slate-800 p-5 rounded-xl border-t-4 border-cyan-500 shadow-lg"><p className="text-xs text-slate-400 uppercase font-bold">Ocupação</p><h3 className="text-3xl font-bold text-white mt-2">{stats.occupied} <span className="text-sm text-slate-500 font-normal">veículos</span></h3></div>
@@ -712,23 +732,6 @@
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Fluxo Financeiro (7 Dias)</h3><ParkingChart historyData={history} financeData={finances} /></div>
                                         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Mapa de Vagas</h3><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto pr-2">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => { const isOccupied = i < tickets.length; return (<div key={i} className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold transition ${isOccupied ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>); })}</div></div>
-                                    </div>
-                                    
-                                    {/* BLOCO DE SUPORTE - GESTÃO MASTER */}
-                                    <div className="bg-gradient-to-r from-blue-700 to-blue-500 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-blue-900 mt-6">
-                                        <div className="flex items-center gap-5">
-                                            <div className="text-5xl">🆘</div>
-                                            <div>
-                                                <h4 className="text-2xl font-black uppercase tracking-tighter">Fale com o Suporte</h4>
-                                                <p className="text-blue-100 opacity-90">Clique no botão ao lado para iniciar uma conversa direta com nossa equipe técnica.</p>
-                                            </div>
-                                        </div>
-                                        <button 
-                                            onClick={() => window.open('https://wa.me/5511932186193', '_blank')}
-                                            className="bg-white text-blue-700 px-10 py-4 rounded-xl font-black shadow-lg hover:bg-blue-50 transition transform hover:scale-105 uppercase text-sm"
-                                        >
-                                            CHAMAR NO WHATSAPP
-                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -743,12 +746,11 @@
                                                 <label className="text-xs text-slate-400 uppercase font-bold block mb-1">Placa</label>
                                                 <div className="flex gap-2">
                                                     <input className="w-full bg-slate-900 border-2 border-slate-700 p-4 rounded-lg text-white font-mono text-2xl uppercase focus:border-cyan-500 outline-none text-center tracking-widest" placeholder="ABC-1234" value={entryForm.plate} onChange={e => setEntryForm({...entryForm, plate: e.target.value.toUpperCase()})} maxLength={8} />
-                                                    <label className="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg border-2 border-slate-600 flex items-center justify-center w-16 cursor-pointer" title="Usar Câmera / Foto">
+                                                    <label className="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg border-2 border-slate-600 flex items-center justify-center w-16 cursor-pointer">
                                                         <i className="ph-bold ph-camera text-2xl"></i>
                                                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileScan} />
                                                     </label>
                                                 </div>
-                                                <p className="text-[10px] text-slate-500 mt-1 text-center">* Use o botão de câmera para tirar foto da placa</p>
                                                 {loadingCamera && <p className="text-xs text-cyan-400 text-center animate-pulse mt-1">Lendo placa...</p>}
                                             </div>
                                             <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Carro' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Moto' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Moto</button></div>
@@ -764,15 +766,15 @@
                                             {tickets.filter(t => t.plate.includes(filterPlate)).map(t => (
                                                 <div key={t.id} className="bg-slate-900 p-4 rounded-lg border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center hover:border-cyan-500 transition group gap-4">
                                                     <div className="flex items-center gap-4"><div className={`p-3 rounded-lg ${t.type === 'Carro' ? 'bg-blue-900/30 text-blue-400' : 'bg-orange-900/30 text-orange-400'}`}><i className={`ph-fill ${t.type === 'Carro' ? 'ph-car' : 'ph-motorcycle'} text-2xl`}></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-xl font-mono">{t.plate}</h4>{t.isSubscriber && <span className="bg-violet-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded">Mensalista</span>}{t.isLoyalty && <span className="bg-emerald-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded flex items-center gap-1"><i className="ph-fill ph-star"></i> Fidelidade</span>}{t.damages && t.damages.length > 0 && <span className="bg-red-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded flex items-center gap-1"><i className="ph-fill ph-warning"></i> Avaria</span>}</div><p className="text-sm text-slate-400">{t.model} • {new Date(t.entryTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p></div></div>
-                                                    <div className="flex gap-2 w-full md:w-auto"><button onClick={() => {setChecklistForm({...checklistForm, plate: t.plate, model: t.model}); setModal('checklist');}} className="flex-1 md:flex-none p-3 md:p-2 text-slate-400 hover:text-white bg-slate-800 rounded border border-slate-600" title="Vistoria"><i className="ph-bold ph-clipboard-text"></i></button><button onClick={() => prepareExit(t)} className="flex-1 md:flex-none bg-red-600 hover:bg-red-500 text-white px-4 py-3 md:py-2 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-sign-out"></i> Saída</button></div>
+                                                    <div className="flex gap-2 w-full md:w-auto"><button onClick={() => sendWhatsAppTicket(t)} className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded"><i className="ph-bold ph-whatsapp-logo"></i></button><button onClick={() => {setChecklistForm({...checklistForm, plate: t.plate, model: t.model}); setModal('checklist');}} className="flex-1 md:flex-none p-3 md:p-2 text-slate-400 hover:text-white bg-slate-800 rounded border border-slate-600"><i className="ph-bold ph-clipboard-text"></i></button><button onClick={() => prepareExit(t)} className="flex-1 md:flex-none bg-red-600 hover:bg-red-500 text-white px-4 py-3 md:py-2 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-sign-out"></i> Saída</button></div>
                                                 </div>
                                             ))}
-                                            {tickets.length === 0 && <div className="text-center py-20 text-slate-500">Pátio vazio.</div>}
                                         </div>
                                     </div>
                                 </div>
                             )}
 
+                            {/* LAVA RÁPIDO */}
                             {tab === 'carwash' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
@@ -788,25 +790,25 @@
                                             const totalServices = (t.services || []).reduce((acc, s) => acc + s.price, 0);
                                             return (
                                                 <div key={t.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                    <div className="flex items-center gap-4 w-full md:w-auto"><div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center font-bold text-xl text-slate-300"><i className="ph-fill ph-car"></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg font-mono">{t.plate}</h4><span className="text-sm text-slate-400">{t.model}</span></div><div className="text-xs text-slate-500">Entrada: {new Date(t.entryTime).toLocaleTimeString()}</div></div></div>
+                                                    <div className="flex items-center gap-4 w-full md:w-auto"><div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center font-bold text-xl text-slate-300"><i className="ph-fill ph-car"></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg font-mono">{t.plate}</h4><span className="text-sm text-slate-400">{t.model}</span></div></div></div>
                                                     <div className="flex-1 w-full md:w-auto border-l-0 md:border-l border-slate-700 pl-0 md:pl-4"><p className="text-xs text-slate-400 font-bold uppercase mb-1">Serviços</p>{hasServices ? (<div className="flex flex-wrap gap-2">{t.services.map(s => <span key={s.id} className="bg-cyan-900/50 text-cyan-300 border border-cyan-700 px-2 py-1 rounded text-xs">{s.name}</span>)}</div>) : (<p className="text-slate-600 text-sm italic">Nenhum serviço.</p>)}</div>
                                                     <div className="flex justify-between w-full md:w-auto items-center gap-4 flex-wrap">
                                                         <div className="text-right min-w-[100px]"><p className="text-xs text-slate-400 uppercase">Total Serviços</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totalServices)}</p></div>
                                                         <div className="flex gap-2 flex-wrap">
-                                                            <button onClick={()=>{setAddServiceForm({ticketId: t.id, selectedServices: t.services || []}); setModal('service_manager');}} className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-sm flex items-center gap-2" title="Gerenciar Serviços"><i className="ph-bold ph-list-plus"></i> <span className="hidden sm:inline">Serviços</span></button>
-                                                            <button onClick={() => handleEditTicket(t)} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm" title="Editar Veículo"><i className="ph-bold ph-pencil"></i></button>
-                                                            <button onClick={() => handleDeleteTicket(t.id)} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded font-bold text-sm" title="Excluir Veículo"><i className="ph-bold ph-trash"></i></button>
-                                                            {hasServices && <button onClick={()=>{setActiveTicket(t); setModal('print_os');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm flex items-center gap-2" title="Imprimir OS"><i className="ph-bold ph-printer"></i> <span className="hidden sm:inline">OS</span></button>}
+                                                            <button onClick={()=>{setAddServiceForm({ticketId: t.id, selectedServices: t.services || []}); setModal('service_manager');}} className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-sm flex items-center gap-2"><i className="ph-bold ph-list-plus"></i> <span className="hidden sm:inline">Serviços</span></button>
+                                                            <button onClick={() => handleEditTicket(t)} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm"><i className="ph-bold ph-pencil"></i></button>
+                                                            <button onClick={() => handleDeleteTicket(t.id)} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded font-bold text-sm"><i className="ph-bold ph-trash"></i></button>
+                                                            {hasServices && <button onClick={()=>{setActiveTicket(t); setModal('print_os');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm flex items-center gap-2"><i className="ph-bold ph-printer"></i> <span className="hidden sm:inline">OS</span></button>}
                                                         </div>
                                                     </div>
                                                 </div>
                                             );
                                         })}
-                                        {tickets.length === 0 && <p className="text-center text-slate-500 py-10">Nenhum veículo no pátio.</p>}
                                     </div>
                                 </div>
                             )}
 
+                            {/* FINANCEIRO */}
                             {tab === 'finance' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -820,27 +822,23 @@
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-left text-sm text-slate-300 min-w-[600px]">
                                                 <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-xs">
-                                                    <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4">Categoria</th><th className="p-4 text-center">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Anexo</th><th className="p-4 text-center">Ações</th></tr>
+                                                    <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4">Categoria</th><th className="p-4 text-center">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Ações</th></tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-700">
                                                     {[...history.map(h => ({...h, isHistory: true, date: h.exitTime, desc: `Ticket #${h.id} - ${h.plate}`, type: 'Receita', cat: 'Estacionamento', value: h.total})), 
                                                       ...finances.map(f => ({...f, desc: f.description, cat: f.category}))]
                                                       .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                      .slice(0, 100)
                                                       .map((item, idx) => (
                                                         <tr key={idx} className="hover:bg-slate-700/30">
-                                                            <td className="p-4 text-slate-500">{new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                                                            <td className="p-4 text-slate-500">{new Date(item.date).toLocaleDateString()}</td>
                                                             <td className="p-4 font-bold text-white">{item.desc}</td>
                                                             <td className="p-4 text-xs">{item.cat}</td>
                                                             <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${item.type === 'Receita' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{item.type}</span></td>
-                                                            <td className={`p-4 text-right font-bold ${item.type === 'Receita' ? 'text-emerald-400' : 'text-red-400'}`}>{item.type === 'Despesa' ? '-' : '+'} {formatCurrency(item.value)}</td>
-                                                            <td className="p-4 text-center">
-                                                                {item.file && <a href={item.file} download={item.fileName} className="text-cyan-400 hover:text-cyan-300" title="Baixar Boleto/Anexo"><i className="ph-bold ph-file-arrow-down text-lg"></i></a>}
-                                                            </td>
+                                                            <td className={`p-4 text-right font-bold ${item.type === 'Receita' ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(item.value)}</td>
                                                             <td className="p-4 text-center">
                                                                 <div className="flex items-center justify-center gap-2">
-                                                                    <button onClick={() => handleEditFinance(item)} className="text-blue-400 hover:text-blue-300" title="Editar"><i className="ph-bold ph-pencil"></i></button>
-                                                                    <button onClick={() => handleDeleteFinance(item)} className="text-red-400 hover:text-red-300" title="Excluir"><i className="ph-bold ph-trash"></i></button>
+                                                                    <button onClick={() => handleEditFinance(item)} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button>
+                                                                    <button onClick={() => handleDeleteFinance(item)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -852,24 +850,22 @@
                                 </div>
                             )}
 
-                            {tab === 'suppliers' && (
+                            {/* FORNECEDORES */}
+                            {tab === 'suppliers' && userRole === 'admin' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
                                         <h3 className="font-bold text-xl text-white">Gestão de Fornecedores</h3>
-                                        <button onClick={() => {setEditSupplier(null); setSupplierForm({name:'', contact:'', category:'Peças', notes:''}); setModal('supplier_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Fornecedor</span></button>
+                                        <button onClick={() => {setEditSupplier(null); setSupplierForm({name:'', contact:'', category:'Peças', notes:''}); setModal('supplier_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> Novo Fornecedor</button>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {suppliers.map(supplier => (
-                                            <div key={supplier.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
-                                                <div className="mb-4 pr-12">
-                                                    <h4 className="font-bold text-white text-lg">{supplier.name}</h4>
-                                                    <p className="text-xs text-cyan-400 font-bold uppercase mt-1">{supplier.category}</p>
-                                                    <p className="text-sm text-slate-300 mt-2"><i className="ph-fill ph-phone"></i> {supplier.contact}</p>
-                                                    {supplier.notes && <p className="text-xs text-slate-500 mt-2 italic">"{supplier.notes}"</p>}
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => {setEditSupplier(supplier); setSupplierForm(supplier); setModal('supplier_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button>
-                                                    <button onClick={() => {if(confirm('Excluir fornecedor?')) { deleteItem('suppliers', supplier.id); if(!db) setSuppliers(prev => prev.filter(s => s.id !== supplier.id)); notify('Fornecedor excluído!'); }}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button>
+                                            <div key={supplier.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                                                <h4 className="font-bold text-white text-lg">{supplier.name}</h4>
+                                                <p className="text-xs text-cyan-400 font-bold uppercase">{supplier.category}</p>
+                                                <p className="text-sm text-slate-300 mt-2">{supplier.contact}</p>
+                                                <div className="flex gap-2 mt-4">
+                                                    <button onClick={() => {setEditSupplier(supplier); setSupplierForm(supplier); setModal('supplier_manager');}} className="flex-1 py-2 bg-slate-700 rounded text-xs">Editar</button>
+                                                    <button onClick={() => deleteItem('suppliers', supplier.id)} className="p-2 bg-red-900/30 text-red-400 rounded"><i className="ph-bold ph-trash"></i></button>
                                                 </div>
                                             </div>
                                         ))}
@@ -877,27 +873,24 @@
                                 </div>
                             )}
 
-                            {tab === 'team' && (
+                            {/* EQUIPE */}
+                            {tab === 'team' && userRole === 'admin' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
                                         <h3 className="font-bold text-xl text-white">Gestão de Equipe</h3>
-                                        <button onClick={() => {setEditingTeamId(null); setTeamForm({name:'', role:'Operador', shift:'Manhã', phone:''}); setModal('team');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-user-plus"></i> <span className="hidden md:inline">Novo Funcionário</span></button>
+                                        <button onClick={() => {setEditingTeamId(null); setTeamForm({name:'', role:'Operador', shift:'Manhã', phone:''}); setModal('team');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-user-plus"></i> Novo Funcionário</button>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {team.map(member => (
-                                            <div key={member.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex items-center gap-4 relative">
-                                                <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xl text-slate-300">{member.name.charAt(0)}</div>
-                                                <div>
+                                            <div key={member.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xl">{member.name.charAt(0)}</div>
+                                                <div className="flex-1">
                                                     <h4 className="font-bold text-white">{member.name}</h4>
-                                                    <p className="text-sm text-cyan-400">{member.role}</p>
-                                                    <div className="text-xs text-slate-500 mt-1 flex gap-2">
-                                                        <span><i className="ph-fill ph-clock"></i> {member.shift}</span>
-                                                        <span><i className="ph-fill ph-phone"></i> {member.phone}</span>
-                                                    </div>
+                                                    <p className="text-sm text-cyan-400">{member.role} • {member.shift}</p>
                                                 </div>
-                                                <div className="ml-auto flex gap-2">
-                                                    <button onClick={() => {setEditingTeamId(member.id); setTeamForm(member); setModal('team');}} className="text-blue-400 hover:text-blue-300 p-2"><i className="ph-bold ph-pencil"></i></button>
-                                                    <button onClick={() => {if(confirm('Remover este funcionário?')) { deleteItem('team', member.id); if(!db) setTeam(prev => prev.filter(m => m.id !== member.id)); notify('Funcionário removido.'); }}} className="text-red-400 hover:text-red-300 p-2"><i className="ph-bold ph-trash"></i></button>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => {setEditingTeamId(member.id); setTeamForm(member); setModal('team');}} className="text-blue-400 p-2"><i className="ph-bold ph-pencil"></i></button>
+                                                    <button onClick={() => deleteItem('team', member.id)} className="text-red-400 p-2"><i className="ph-bold ph-trash"></i></button>
                                                 </div>
                                             </div>
                                         ))}
@@ -905,37 +898,25 @@
                                 </div>
                             )}
 
+                            {/* FIDELIDADE */}
                             {tab === 'clients' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
-                                        <h3 className="font-bold text-xl text-white">Gestão de Clientes & Fidelidade</h3>
-                                        <button onClick={() => {setEditClient(null); setClientForm({name:'', phone:'', plate:'', points: 0, notes:''}); setModal('client_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Cliente</span></button>
+                                        <h3 className="font-bold text-xl text-white">Clientes & Fidelidade</h3>
+                                        <button onClick={() => {setEditClient(null); setClientForm({name:'', phone:'', plate:'', points: 0, notes:''}); setModal('client_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> Novo Cliente</button>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {clients.map(client => (
                                             <div key={client.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
-                                                <div className="absolute top-0 right-0 p-3 bg-slate-900 rounded-bl-xl border-l border-b border-slate-700">
-                                                    <div className="text-center">
-                                                        <span className="text-2xl font-bold text-emerald-400 block leading-none">{client.points}</span>
-                                                        <span className="text-[9px] text-slate-500 uppercase font-bold">Pontos</span>
-                                                    </div>
+                                                <div className="absolute top-4 right-4 text-center">
+                                                    <span className="text-2xl font-bold text-emerald-400 block">{client.points}</span>
+                                                    <span className="text-[9px] text-slate-500 uppercase font-bold">Pontos</span>
                                                 </div>
-                                                <div className="mb-4 pr-12">
-                                                    <h4 className="font-bold text-white text-lg">{client.name}</h4>
-                                                    <p className="text-xs text-slate-400 mt-1"><i className="ph-fill ph-phone"></i> {client.phone}</p>
-                                                    <p className="text-xs text-slate-400"><i className="ph-fill ph-car"></i> {client.plate}</p>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => addPoints(client.id, 1)} className="flex-1 py-3 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded text-xs font-bold border border-emerald-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-plus"></i> 1 Ponto</button>
-                                                    <button onClick={() => {
-                                                        if(client.points >= 10) {
-                                                            if(confirm('Resgatar 10 pontos?')) addPoints(client.id, -10);
-                                                        } else {
-                                                            notify('Saldo insuficiente (Min: 10)', 'error');
-                                                        }
-                                                    }} className="flex-1 py-3 bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 rounded text-xs font-bold border border-violet-600/50 flex items-center justify-center gap-1"><i className="ph-bold ph-gift"></i> Resgatar</button>
-                                                    <button onClick={() => {setEditClient(client); setClientForm(client); setModal('client_manager');}} className="p-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded" title="Editar"><i className="ph-bold ph-pencil"></i></button>
-                                                    <button onClick={() => {if(confirm('Tem certeza que deseja excluir este cliente?')) { deleteItem('clients', client.id); if(!db) setClients(prev => prev.filter(c => c.id !== client.id)); notify('Cliente excluído!'); }}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded" title="Excluir"><i className="ph-bold ph-trash"></i></button>
+                                                <h4 className="font-bold text-white text-lg">{client.name}</h4>
+                                                <p className="text-xs text-slate-400">{client.plate}</p>
+                                                <div className="flex gap-2 mt-4">
+                                                    <button onClick={() => addPoints(client.id, 1)} className="flex-1 py-2 bg-emerald-600/20 text-emerald-400 rounded text-xs font-bold border border-emerald-600/50">+1 Ponto</button>
+                                                    <button onClick={() => addPoints(client.id, -10)} className="flex-1 py-2 bg-violet-600/20 text-violet-400 rounded text-xs font-bold border border-violet-600/50">Resgatar 10</button>
                                                 </div>
                                             </div>
                                         ))}
@@ -943,365 +924,136 @@
                                 </div>
                             )}
 
+                            {/* MENSALISTAS */}
                             {tab === 'subscribers' && (
                                 <div className="space-y-6 animate-fade-in">
                                     <div className="flex justify-between items-center">
                                         <h3 className="font-bold text-xl text-white">Gestão de Mensalistas</h3>
-                                        <button onClick={() => {setEditSubscriber(null); setSubscriberForm({name:'', plate:'', model:'', plan:'Integral', dueDay: 10, active: true}); setModal('subscriber_manager');}} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Mensalista</span></button>
+                                        <button onClick={() => {setEditSubscriber(null); setSubscriberForm({name:'', plate:'', model:'', plan:'Integral', dueDay: 10, active: true}); setModal('subscriber_manager');}} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> Novo Mensalista</button>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {subscribers.map(s => (
                                             <div key={s.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 relative">
-                                                <div className="absolute top-0 right-0 p-2"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${s.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{s.active ? 'Ativo' : 'Inativo'}</span></div>
-                                                <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center font-bold text-white">{s.name.charAt(0)}</div><div><h4 className="font-bold text-white">{s.name}</h4><p className="text-xs text-slate-400">Vencimento dia {s.dueDay}</p></div></div>
-                                                <div className="bg-slate-900 p-3 rounded text-sm mb-3"><div className="flex justify-between mb-1"><span className="text-slate-500">Placa</span><span className="font-mono font-bold text-white">{s.plate}</span></div><div className="flex justify-between"><span className="text-slate-500">Modelo</span><span className="text-slate-300">{s.model}</span></div></div>
-                                                <div className="flex gap-2"><button onClick={() => {setEditSubscriber(s); setSubscriberForm(s); setModal('subscriber_manager');}} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm font-bold">Editar</button><button onClick={() => {if(confirm('Excluir mensalista?')) { deleteItem('subscribers', s.id); if(!db) setSubscribers(prev => prev.filter(sub => sub.id !== s.id)); notify('Mensalista excluído!'); }}} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded"><i className="ph-bold ph-trash"></i></button></div>
+                                                <div className="absolute top-2 right-2"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${s.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{s.active ? 'Ativo' : 'Inativo'}</span></div>
+                                                <h4 className="font-bold text-white">{s.name}</h4>
+                                                <p className="text-xs text-slate-400">Vencimento dia {s.dueDay}</p>
+                                                <div className="bg-slate-900 p-3 rounded text-sm my-3"><p>Placa: <span className="font-mono font-bold text-white">{s.plate}</span></p></div>
+                                                <div className="flex gap-2"><button onClick={() => {setEditSubscriber(s); setSubscriberForm(s); setModal('subscriber_manager');}} className="flex-1 py-2 bg-slate-700 rounded text-xs font-bold">Editar</button><button onClick={() => deleteItem('subscribers', s.id)} className="p-2 bg-red-900/30 text-red-400 rounded"><i className="ph-bold ph-trash"></i></button></div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {tab === 'agreements' && (
-                                <div className="space-y-6 animate-fade-in">
-                                    <div className="flex justify-between items-center"><h3 className="font-bold text-xl text-white">Parcerias e Convênios</h3><button onClick={()=>{setEditingAgreementId(null); setAgreementForm({name: '', discountType: 'free_time', value: 0}); setModal('new_agreement')}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Novo Convênio</span></button></div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {agreements.map(a => (
-                                            <div key={a.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
-                                                <div><h4 className="font-bold text-white">{a.name}</h4><p className="text-sm text-slate-400">Benefício: <span className="text-cyan-400 font-bold">{a.discountType === 'free_time' ? `${a.value} min Grátis` : `${a.value}% de Desconto`}</span></p></div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => {setEditingAgreementId(a.id); setAgreementForm(a); setModal('new_agreement');}} className="p-3 text-blue-400 hover:bg-slate-700 rounded" title="Editar"><i className="ph-bold ph-pencil"></i></button>
-                                                    <button className="p-3 text-red-400 hover:bg-slate-700 rounded" onClick={()=>{ if(confirm('Remover?')) { deleteItem('agreements', a.id); if(!db) setAgreements(agreements.filter(i=>i.id!==a.id)); notify('Convênio removido!'); } }} title="Excluir"><i className="ph-bold ph-trash"></i></button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {tab === 'config' && (
+                            {/* CONFIGURAÇÕES */}
+                            {tab === 'config' && userRole === 'admin' && (
                                 <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="bg-slate-800 p-4 md:p-8 rounded-xl border border-slate-700">
-                                            <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Tabela de Preços & Config</h3>
-                                            <div className="space-y-5">
-                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Nome do Estacionamento</label><input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
-                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Total de Vagas</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" value={config.totalSpots} onChange={e=>setConfig({...config, totalSpots:e.target.value})} /></div>
-                                                
+                                    <div className="bg-slate-800 p-8 rounded-xl border border-slate-700">
+                                        <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Configurações do Sistema</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-4">
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Nome do Estabelecimento</label><input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Endereço</label><input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.address} onChange={e=>setConfig({...config, address:e.target.value})} /></div>
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Total de Vagas</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.totalSpots} onChange={e=>setConfig({...config, totalSpots:e.target.value})} /></div>
+                                            </div>
+                                            <div className="space-y-4">
                                                 <div className="grid grid-cols-2 gap-4">
-                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
-                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
                                                 </div>
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Tolerância (min)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.toleranceMin} onChange={e=>setConfig({...config, toleranceMin:e.target.value})} /></div>
+                                                <div><label className="text-sm font-bold text-slate-400 block mb-2">Diária (8h+)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.dailyRate} onChange={e=>setConfig({...config, dailyRate:e.target.value})} /></div>
                                             </div>
                                         </div>
-                                        
-                                        <div className="space-y-6">
-                                            <div className="bg-slate-800 p-4 md:p-8 rounded-xl border border-slate-700">
-                                                <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Catálogo de Serviços</h3>
-                                                <div className="space-y-4 mb-6">
-                                                    <div className="flex gap-2">
-                                                        <input className="flex-1 bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
-                                                        <input className="w-24 bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" type="number" placeholder="Valor" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
-                                                        
-                                                        {editingServiceId ? (
-                                                            <>
-                                                                <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Salvar"><i className="ph-bold ph-check"></i></button>
-                                                                <button onClick={cancelEditService} className="bg-slate-600 hover:bg-slate-500 text-white px-4 rounded font-bold" title="Cancelar"><i className="ph-bold ph-x"></i></button>
-                                                            </>
-                                                        ) : (
-                                                            <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Adicionar Novo"><i className="ph-bold ph-plus"></i></button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border-t border-slate-700 pt-4">
-                                                    {servicesList.map(s => (
-                                                        <div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded border border-slate-700">
-                                                            <span className="text-white font-bold">{s.name}</span>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-emerald-400 font-bold mr-2">{formatCurrency(s.price)}</span>
-                                                                <button onClick={() => handleEditService(s)} className="text-blue-400 hover:text-blue-300 p-2"><i className="ph-bold ph-pencil"></i></button>
-                                                                <button onClick={() => removeServiceConfig(s.id)} className="text-red-400 hover:text-red-300 p-2"><i className="ph-bold ph-trash"></i></button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-slate-800 p-4 md:p-8 rounded-xl border border-slate-700">
-                                                <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Alterar Senha de Acesso</h3>
-                                                <div className="space-y-3">
-                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" type="password" placeholder="Senha Atual" value={passwordForm.current} onChange={e=>setPasswordForm({...passwordForm, current:e.target.value})} />
-                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" type="password" placeholder="Nova Senha" value={passwordForm.new} onChange={e=>setPasswordForm({...passwordForm, new:e.target.value})} />
-                                                    <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" type="password" placeholder="Confirmar Nova Senha" value={passwordForm.confirm} onChange={e=>setPasswordForm({...passwordForm, confirm:e.target.value})} />
-                                                    <button onClick={handleChangePassword} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded">Atualizar Senha</button>
-                                                </div>
+                                        <div className="mt-8 pt-8 border-t border-slate-700">
+                                            <h3 className="font-bold text-xl mb-4">Alterar Senha Admin</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <input className="bg-slate-900 border border-slate-700 p-3 rounded" type="password" placeholder="Senha Atual" value={passwordForm.current} onChange={e=>setPasswordForm({...passwordForm, current:e.target.value})} />
+                                                <input className="bg-slate-900 border border-slate-700 p-3 rounded" type="password" placeholder="Nova Senha" value={passwordForm.new} onChange={e=>setPasswordForm({...passwordForm, new:e.target.value})} />
+                                                <button onClick={handleChangePassword} className="bg-slate-700 hover:bg-slate-600 py-3 rounded font-bold">Atualizar</button>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 pb-8">
-                                        <button onClick={()=>notify('Configurações salvas')} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto">Salvar Alterações</button>
+                                        <button onClick={saveConfig} className="mt-8 bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3 rounded-lg font-bold">Salvar Configurações</button>
                                     </div>
                                 </div>
                             )}
-
                         </div>
                     </main>
 
                     {/* MODAIS */}
                     {modal && (
-                        <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 ${modal.includes('print') || modal === 'camera_scan' ? 'print:p-0 print:bg-white' : ''}`}>
-                            
-                            {/* PRINT ENTRY */}
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 no-print`}>
                             {modal === 'print_entry' && activeTicket && (
                                 <div className="bg-white text-black p-6 rounded-xl max-w-sm w-full relative">
-                                    <button onClick={() => setModal(null)} className="absolute top-2 right-2 text-gray-500 hover:text-red-500 no-print"><i className="ph-bold ph-x text-xl"></i></button>
+                                    <button onClick={() => setModal(null)} className="absolute top-2 right-2 text-gray-500 no-print"><i className="ph-bold ph-x text-xl"></i></button>
                                     <div id="print-area">
-                                        <div className="text-center">
-                                            <h2 className="font-bold text-xl uppercase">{config.name}</h2>
+                                        <div className="text-center font-mono">
+                                            <h2 className="font-bold text-xl">{config.name || 'PARKING PRO'}</h2>
                                             <p className="text-xs">{config.address}</p>
                                             <div className="my-4 border-b-2 border-dashed border-black"></div>
-                                            <h3 className="text-2xl font-black mb-2">{activeTicket.plate}</h3>
-                                            <p className="text-sm mb-4">{activeTicket.model} - {activeTicket.type}</p>
-                                            <div className="text-left text-sm space-y-1 mb-4">
-                                                <p><strong>Entrada:</strong> {new Date(activeTicket.entryTime).toLocaleString()}</p>
-                                                {activeTicket.isSubscriber && <p className="font-bold">MENSALISTA</p>}
-                                                {activeTicket.isLoyalty && <p className="font-bold">CLIENTE FIDELIDADE</p>}
-                                            </div>
-                                            <div className="barcode mb-2"></div>
-                                            <p className="text-xs mt-2">Ticket #{activeTicket.id}</p>
+                                            <h3 className="text-2xl font-black">{activeTicket.plate}</h3>
+                                            <p className="text-sm">{activeTicket.model}</p>
+                                            <p className="text-xs mt-2">ENTRADA: {new Date(activeTicket.entryTime).toLocaleString()}</p>
+                                            <div className="barcode mt-4"></div>
                                         </div>
                                     </div>
-                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 no-print flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir</button>
+                                    <div className="flex flex-col gap-2 mt-4 no-print">
+                                        <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir</button>
+                                        <button onClick={() => sendWhatsAppTicket(activeTicket)} className="w-full bg-emerald-600 text-white font-bold py-3 rounded flex items-center justify-center gap-2"><i className="ph-bold ph-whatsapp-logo"></i> WhatsApp</button>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* CONFIRM EXIT */}
                             {modal === 'confirm_exit' && activeTicket && (
-                                <div className="bg-slate-800 text-white p-6 rounded-xl max-w-md w-full border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold mb-4 border-b border-slate-700 pb-2">Confirmar Saída</h3>
+                                <div className="bg-slate-800 text-white p-6 rounded-xl max-w-md w-full border border-slate-700">
+                                    <h3 className="text-xl font-bold mb-4">Fechar Ticket - {activeTicket.plate}</h3>
                                     <div className="space-y-4 mb-6">
-                                        <div className="flex justify-between items-center"><span className="text-slate-400">Permanência</span><span className="font-bold">{activeTicket.durationHours}h ({activeTicket.durationMins}m)</span></div>
-                                        <div className="flex justify-between items-center"><span className="text-slate-400">Estacionamento</span><span className="font-bold text-lg">{formatCurrency(activeTicket.parkingFee)}</span></div>
-                                        {activeTicket.servicesFee > 0 && <div className="flex justify-between items-center"><span className="text-slate-400">Serviços</span><span className="font-bold text-emerald-400">{formatCurrency(activeTicket.servicesFee)}</span></div>}
-                                        {activeTicket.appliedAgreement && <div className="flex justify-between items-center"><span className="text-cyan-400">Desconto ({activeTicket.appliedAgreement.name})</span><span className="font-bold text-cyan-400">-{formatCurrency(activeTicket.subTotal - activeTicket.total)}</span></div>}
-                                        <div className="border-t border-slate-700 pt-2 flex justify-between items-center"><span className="text-xl font-bold">Total a Pagar</span><span className="text-3xl font-black text-white">{formatCurrency(activeTicket.total)}</span></div>
-                                        
-                                        {!activeTicket.isSubscriber && (
-                                            <div>
-                                                <label className="text-xs text-slate-400 block mb-1">Forma de Pagamento</label>
-                                                <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
-                                                    <option>Dinheiro</option><option>PIX</option><option>Cartão Crédito</option><option>Cartão Débito</option>
-                                                </select>
-                                            </div>
-                                        )}
-                                        
-                                        {agreements.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-slate-400 block mb-1">Aplicar Convênio</label>
-                                                <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded" onChange={e => calculateTotalWithAgreement(activeTicket, e.target.value)}>
-                                                    <option value="">Nenhum</option>
-                                                    {agreements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                                </select>
-                                            </div>
-                                        )}
+                                        <div className="flex justify-between"><span className="text-slate-400">Permanência:</span><span className="font-bold">{activeTicket.durationHours}h</span></div>
+                                        <div className="flex justify-between items-center"><span className="text-xl font-bold">Total:</span><span className="text-3xl font-black text-emerald-400">{formatCurrency(activeTicket.total)}</span></div>
+                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
+                                            <option>Dinheiro</option><option>PIX</option><option>Cartão Crédito</option><option>Cartão Débito</option>
+                                        </select>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={()=>setModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded font-bold">Cancelar</button>
-                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded font-bold">Finalizar</button>
+                                        <button onClick={()=>setModal(null)} className="flex-1 bg-slate-700 py-3 rounded font-bold">Cancelar</button>
+                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 py-3 rounded font-bold">Confirmar Saída</button>
                                     </div>
                                 </div>
                             )}
-
-                            {/* PRINT EXIT */}
+                            
                             {modal === 'print_exit' && activeTicket && (
                                 <div className="bg-white text-black p-6 rounded-xl max-w-sm w-full relative">
-                                    <button onClick={() => setModal(null)} className="absolute top-2 right-2 text-gray-500 hover:text-red-500 no-print"><i className="ph-bold ph-x text-xl"></i></button>
+                                    <button onClick={() => setModal(null)} className="absolute top-2 right-2 text-gray-500 no-print"><i className="ph-bold ph-x text-xl"></i></button>
                                     <div id="print-area">
-                                        <div className="text-center">
-                                            <h2 className="font-bold text-xl uppercase">{config.name}</h2>
-                                            <p className="text-xs mb-2">{config.address}</p>
-                                            <div className="text-center border border-black p-1 font-bold text-lg mb-4">RECIBO DE PAGAMENTO</div>
-                                            <p className="text-left text-sm mb-1"><strong>Placa:</strong> {activeTicket.plate}</p>
-                                            <p className="text-left text-sm mb-1"><strong>Entrada:</strong> {new Date(activeTicket.entryTime).toLocaleString()}</p>
-                                            <p className="text-left text-sm mb-1"><strong>Saída:</strong> {new Date(activeTicket.exitTime).toLocaleString()}</p>
-                                            <p className="text-left text-sm mb-1"><strong>Permanência:</strong> {activeTicket.durationHours}h {activeTicket.durationMins}m</p>
-                                            <div className="my-2 border-b border-dashed border-black"></div>
-                                            <div className="flex justify-between font-bold text-lg"><span className="uppercase">Total</span><span>{formatCurrency(activeTicket.total)}</span></div>
-                                            <p className="text-xs mt-4 text-center">Obrigado pela preferência!</p>
+                                        <div className="text-center font-mono">
+                                            <h2 className="font-bold text-xl">{config.name}</h2>
+                                            <p className="text-xs">RECIBO DE PAGAMENTO</p>
+                                            <div className="my-4 border-b-2 border-dashed border-black"></div>
+                                            <p className="text-sm">PLACA: {activeTicket.plate}</p>
+                                            <p className="text-sm">TOTAL: {formatCurrency(activeTicket.total)}</p>
+                                            <p className="text-xs mt-4">Obrigado pela preferência!</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 no-print flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir Recibo</button>
-                                    <button onClick={() => setModal(null)} className="w-full bg-slate-200 text-slate-800 font-bold py-3 rounded mt-2 no-print">Fechar</button>
+                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 no-print">Imprimir Recibo</button>
                                 </div>
                             )}
 
-                            {/* PRINT OS (LAVA RAPIDO) */}
-                            {modal === 'print_os' && activeTicket && (
-                                <div className="bg-white text-black p-8 rounded-xl max-w-2xl w-full relative max-h-[90vh] overflow-y-auto">
-                                    <button onClick={() => setModal(null)} className="absolute top-4 right-4 text-gray-500 hover:text-red-500 no-print"><i className="ph-bold ph-x text-2xl"></i></button>
-                                    <div id="print-area" className="os-paper">
-                                        <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
-                                            <div><h1 className="text-3xl font-bold uppercase">{config.name}</h1><p>{config.address}</p></div>
-                                            <div className="text-right"><h2 className="text-xl font-bold">ORDEM DE SERVIÇO</h2><p className="text-lg text-red-600 font-bold">#{activeTicket.id}</p></div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4 mb-6">
-                                            <div className="border p-2"><p className="text-xs font-bold uppercase">Cliente/Veículo</p><p className="text-xl font-bold">{activeTicket.plate}</p><p>{activeTicket.model}</p></div>
-                                            <div className="border p-2"><p className="text-xs font-bold uppercase">Data/Hora</p><p>{new Date(activeTicket.entryTime).toLocaleString()}</p></div>
-                                        </div>
-                                        <table className="w-full mb-6 border-collapse border border-black">
-                                            <thead><tr className="bg-gray-200"><th className="border border-black p-2 text-left">Serviço</th><th className="border border-black p-2 text-right w-32">Valor</th></tr></thead>
-                                            <tbody>
-                                                {activeTicket.services.map((s, i) => (<tr key={i}><td className="border border-black p-2">{s.name}</td><td className="border border-black p-2 text-right">{formatCurrency(s.price)}</td></tr>))}
-                                                <tr><td className="border border-black p-2 text-right font-bold">TOTAL</td><td className="border border-black p-2 text-right font-bold">{formatCurrency((activeTicket.services || []).reduce((acc, s)=>acc+s.price,0))}</td></tr>
-                                            </tbody>
-                                        </table>
-                                        <div className="border p-4 mb-4 min-h-[100px]"><p className="text-xs font-bold uppercase">Observações</p><p>{activeTicket.notes || "Sem observações."}</p></div>
-                                        <div className="flex justify-between mt-12 pt-4 border-t border-black"><div className="text-center w-1/3 border-t border-black pt-2">Assinatura do Cliente</div><div className="text-center w-1/3 border-t border-black pt-2">Responsável Técnico</div></div>
-                                    </div>
-                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 no-print flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir OS</button>
-                                </div>
-                            )}
-
-                            {/* CHECKLIST MODAL */}
-                            {modal === 'checklist' && (
-                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Vistoria de Entrada</h3>
-                                    <div className="space-y-4">
-                                        <div className="flex gap-2"><div className="flex-1"><label className="text-xs text-slate-400">Placa</label><input className="w-full bg-slate-900 border border-slate-700 p-2 rounded text-white" value={checklistForm.plate} readOnly /></div><div className="flex-1"><label className="text-xs text-slate-400">Modelo</label><input className="w-full bg-slate-900 border border-slate-700 p-2 rounded text-white" value={checklistForm.model} onChange={e=>setChecklistForm({...checklistForm, model:e.target.value})} /></div></div>
-                                        <div><label className="text-xs text-slate-400">Nível de Combustível</label><div className="flex gap-2 mt-1">{['Reserva', '1/4', '1/2', '3/4', 'Cheio'].map(opt => (<button key={opt} onClick={()=>setChecklistForm({...checklistForm, fuel: opt})} className={`flex-1 py-2 text-xs rounded border ${checklistForm.fuel === opt ? 'bg-cyan-600 border-cyan-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>{opt}</button>))}</div></div>
-                                        <div><label className="text-xs text-slate-400 mb-2 block">Itens / Avarias</label><div className="grid grid-cols-2 gap-2">{['Sem Estepe', 'Macaco Ausente', 'Triângulo Ausente', 'Risco Lataria', 'Amassado Porta', 'Vidro Trincado', 'Farol Quebrado'].map(item => (<div key={item} className="flex items-center gap-2"><input type="checkbox" checked={checklistForm.items.includes(item)} onChange={e=>{ const newItems = e.target.checked ? [...checklistForm.items, item] : checklistForm.items.filter(i=>i!==item); setChecklistForm({...checklistForm, items: newItems}); }} className="accent-red-500" /><label className="text-sm text-slate-300">{item}</label></div>))}</div></div>
-                                        <textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-20 text-sm" placeholder="Observações adicionais..." value={checklistForm.notes} onChange={e=>setChecklistForm({...checklistForm, notes:e.target.value})}></textarea>
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveChecklist} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar Vistoria</button></div>
-                                </div>
-                            )}
-
-                            {/* NEW WASH ENTRY */}
-                            {modal === 'new_wash_entry' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Nova Lavagem</h3>
-                                    <div className="space-y-3">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase text-center font-mono text-xl" placeholder="PLACA" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} maxLength={8} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Modelo" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
-                                        <div className="flex gap-2"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-2 rounded ${entryForm.type === 'Carro' ? 'bg-cyan-600' : 'bg-slate-900'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-2 rounded ${entryForm.type === 'Moto' ? 'bg-cyan-600' : 'bg-slate-900'}`}>Moto</button></div>
-                                        <button onClick={() => { handleEntry(); setModal(null); }} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded mt-2">Iniciar Serviço</button>
-                                    </div>
-                                    <button onClick={()=>setModal(null)} className="w-full text-slate-500 mt-4 text-sm">Cancelar</button>
-                                </div>
-                            )}
-                            
-                            {/* SERVIÇOS (ADD TO TICKET) */}
-                            {modal === 'service_manager' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Adicionar Serviços</h3>
-                                    <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
-                                        {servicesList.map(service => { const isSelected = addServiceForm.selectedServices.find(s => s.id === service.id); return (<div key={service.id} onClick={() => toggleServiceSelection(service.id)} className={`p-4 rounded border cursor-pointer flex justify-between items-center transition ${isSelected ? 'bg-cyan-900/50 border-cyan-500' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}`}><span className="text-white">{service.name}</span><div className="flex items-center gap-2"><span className="text-emerald-400 font-bold">{formatCurrency(service.price)}</span>{isSelected && <i className="ph-fill ph-check-circle text-cyan-400"></i>}</div></div>) })}
-                                    </div>
-                                    <div className="flex justify-between items-center pt-4 border-t border-slate-700"><div className="text-sm text-slate-400">Total: <span className="text-white font-bold text-lg ml-1">{formatCurrency(addServiceForm.selectedServices.reduce((acc, s)=>acc+s.price,0))}</span></div><div className="flex gap-2"><button onClick={()=>setModal(null)} className="px-4 py-3 text-slate-400 font-bold">Cancelar</button><button onClick={handleAddServices} className="px-6 py-3 bg-cyan-600 text-white rounded font-bold hover:bg-cyan-700">Salvar</button></div></div>
-                                </div>
-                            )}
-
-                            {/* SERVICES TYPES MANAGER (NOVO) */}
-                            {modal === 'service_types' && (
-                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Gerenciar Tipos de Serviços</h3>
-                                    <div className="space-y-4 mb-6">
-                                        <div className="flex gap-2">
-                                            <input className="flex-1 bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
-                                            <input className="w-24 bg-slate-900 border border-slate-700 p-4 rounded text-base md:text-sm text-white" type="number" placeholder="Valor" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
-                                            
-                                            {editingServiceId ? (
-                                                <>
-                                                    <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Salvar"><i className="ph-bold ph-check"></i></button>
-                                                    <button onClick={cancelEditService} className="bg-slate-600 hover:bg-slate-500 text-white px-4 rounded font-bold" title="Cancelar"><i className="ph-bold ph-x"></i></button>
-                                                </>
-                                            ) : (
-                                                <button onClick={saveServiceConfig} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded font-bold" title="Adicionar Novo"><i className="ph-bold ph-plus"></i></button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border-t border-slate-700 pt-4">
-                                        {servicesList.map(s => (
-                                            <div key={s.id} className="flex justify-between items-center bg-slate-900 p-3 rounded border border-slate-700">
-                                                <span className="text-white font-bold">{s.name}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-emerald-400 font-bold mr-2">{formatCurrency(s.price)}</span>
-                                                    <button onClick={() => handleEditService(s)} className="text-blue-400 hover:text-blue-300 p-2"><i className="ph-bold ph-pencil"></i></button>
-                                                    <button onClick={() => removeServiceConfig(s.id)} className="text-red-400 hover:text-red-300 p-2"><i className="ph-bold ph-trash"></i></button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex justify-end mt-4"><button onClick={()=>setModal(null)} className="px-4 py-2 bg-slate-600 text-white rounded hover:bg-slate-500">Fechar</button></div>
-                                </div>
-                            )}
-
-                            {/* TICKET EDITOR MODAL (NOVO) */}
-                            {modal === 'edit_ticket' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">Editar Veículo</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex gap-3">
-                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Placa</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-base md:text-sm text-white uppercase" value={editTicketForm.plate} onChange={e=>setEditTicketForm({...editTicketForm, plate:e.target.value.toUpperCase()})} /></div>
-                                            <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Tipo</label><select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-base md:text-sm text-white" value={editTicketForm.type} onChange={e=>setEditTicketForm({...editTicketForm, type:e.target.value})}><option>Carro</option><option>Moto</option></select></div>
-                                        </div>
-                                        <div><label className="text-xs text-slate-400 mb-1 block">Modelo</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-base md:text-sm text-white" value={editTicketForm.model} onChange={e=>setEditTicketForm({...editTicketForm, model:e.target.value})} /></div>
-                                        <div><label className="text-xs text-slate-400 mb-1 block">Observações</label><textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-base md:text-sm text-white h-20" value={editTicketForm.notes} onChange={e=>setEditTicketForm({...editTicketForm, notes:e.target.value})}></textarea></div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveTicketEdit} className="bg-cyan-600 text-white px-4 py-2 rounded font-bold">Salvar Alterações</button></div>
-                                </div>
-                            )}
-                            
-                            {/* CLIENT MANAGER */}
-                            {modal === 'client_manager' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editClient ? 'Editar Cliente' : 'Novo Cliente'}</h3>
-                                    <div className="space-y-3">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome Completo" value={clientForm.name} onChange={e=>setClientForm({...clientForm, name:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Telefone / WhatsApp" value={clientForm.phone} onChange={e=>setClientForm({...clientForm, phone:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" placeholder="Placa Principal" value={clientForm.plate} onChange={e=>setClientForm({...clientForm, plate:e.target.value.toUpperCase()})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Notas (Opcional)" value={clientForm.notes} onChange={e=>setClientForm({...clientForm, notes:e.target.value})} />
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleClientSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
-                                </div>
-                            )}
-
-                            {/* SUBSCRIBER MANAGER */}
-                            {modal === 'subscriber_manager' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editSubscriber ? 'Editar Mensalista' : 'Novo Mensalista'}</h3>
-                                    <div className="space-y-3">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome" value={subscriberForm.name} onChange={e=>setSubscriberForm({...subscriberForm, name:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" placeholder="Placa" value={subscriberForm.plate} onChange={e=>setSubscriberForm({...subscriberForm, plate:e.target.value.toUpperCase()})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Modelo" value={subscriberForm.model} onChange={e=>setSubscriberForm({...subscriberForm, model:e.target.value})} />
-                                        <div className="flex gap-2">
-                                            <div className="flex-1"><label className="text-xs text-slate-400">Dia Vencimento</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={subscriberForm.dueDay} onChange={e=>setSubscriberForm({...subscriberForm, dueDay:e.target.value})} /></div>
-                                            <div className="flex-1 flex items-center justify-center bg-slate-900 border border-slate-700 rounded mt-5"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={subscriberForm.active} onChange={e=>setSubscriberForm({...subscriberForm, active:e.target.checked})} className="accent-emerald-500 w-5 h-5" /><span className="text-white text-sm">Ativo</span></label></div>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleSubscriberSave} className="bg-violet-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
-                                </div>
-                            )}
-                            
-                            {/* FINANCE MODAL */}
                             {modal === 'finance' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editingFinanceId ? 'Editar Lançamento' : 'Novo Lançamento'}</h3>
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700">
+                                    <h3 className="text-xl font-bold text-white mb-4">{editingFinanceId ? 'Editar' : 'Novo'} Lançamento</h3>
                                     <div className="space-y-3">
-                                        <div className="flex bg-slate-900 rounded p-1"><button onClick={()=>setFinanceForm({...financeForm, type:'Receita'})} className={`flex-1 py-2 rounded ${financeForm.type==='Receita'?'bg-emerald-600 text-white':'text-slate-400'}`}>Receita</button><button onClick={()=>setFinanceForm({...financeForm, type:'Despesa'})} className={`flex-1 py-2 rounded ${financeForm.type==='Despesa'?'bg-red-600 text-white':'text-slate-400'}`}>Despesa</button></div>
+                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option>Receita</option><option>Despesa</option></select>
                                         <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Descrição" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Valor (R$)" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Valor" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} />
                                         <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="date" value={financeForm.date} onChange={e=>setFinanceForm({...financeForm, date:e.target.value})} />
-                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.category} onChange={e=>setFinanceForm({...financeForm, category:e.target.value})}><option>Geral</option><option>Aluguel</option><option>Energia</option><option>Água</option><option>Internet</option><option>Salários</option><option>Manutenção</option><option>Produtos</option><option>Impostos</option></select>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveFinance} className="bg-emerald-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
                                 </div>
                             )}
 
-                            {/* TEAM MODAL */}
                             {modal === 'team' && (
                                 <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editingTeamId ? 'Editar Funcionário' : 'Novo Funcionário'}</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4">{editingTeamId ? 'Editar Funcionário' : 'Novo Funcionário'}</h3>
                                     <div className="space-y-3">
                                         <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome" value={teamForm.name} onChange={e=>setTeamForm({...teamForm, name:e.target.value})} />
                                         <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={teamForm.role} onChange={e=>setTeamForm({...teamForm, role:e.target.value})}><option>Operador</option><option>Gerente</option><option>Lavador</option><option>Caixa</option></select>
@@ -1312,33 +1064,41 @@
                                 </div>
                             )}
 
-                            {/* SUPPLIER MODAL */}
-                            {modal === 'supplier_manager' && (
+                            {modal === 'client_manager' && (
                                 <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4">{editClient ? 'Editar Cliente' : 'Novo Cliente'}</h3>
                                     <div className="space-y-3">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Empresa / Nome" value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm, name:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Contato (Tel/Email)" value={supplierForm.contact} onChange={e=>setSupplierForm({...supplierForm, contact:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Categoria (ex: Peças)" value={supplierForm.category} onChange={e=>setSupplierForm({...supplierForm, category:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Obs" value={supplierForm.notes} onChange={e=>setSupplierForm({...supplierForm, notes:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome Completo" value={clientForm.name} onChange={e=>setClientForm({...clientForm, name:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Telefone / WhatsApp" value={clientForm.phone} onChange={e=>setClientForm({...clientForm, phone:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" placeholder="Placa Principal" value={clientForm.plate} onChange={e=>setClientForm({...clientForm, plate:e.target.value.toUpperCase()})} />
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleSupplierSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleClientSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                </div>
+                            )}
+                            
+                            {modal === 'checklist' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">Vistoria - {checklistForm.plate}</h3>
+                                    <div className="space-y-4">
+                                        <div><label className="text-xs text-slate-400">Nível de Combustível</label><div className="flex gap-2 mt-1">{['Reserva', '1/4', '1/2', '3/4', 'Cheio'].map(opt => (<button key={opt} onClick={()=>setChecklistForm({...checklistForm, fuel: opt})} className={`flex-1 py-2 text-xs rounded border ${checklistForm.fuel === opt ? 'bg-cyan-600 border-cyan-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>{opt}</button>))}</div></div>
+                                        <textarea className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white h-24" placeholder="Observações de avarias..." value={checklistForm.notes} onChange={e=>setChecklistForm({...checklistForm, notes:e.target.value})}></textarea>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveChecklist} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar Vistoria</button></div>
                                 </div>
                             )}
 
-                             {/* AGREEMENT MODAL */}
-                             {modal === 'new_agreement' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">{editingAgreementId ? 'Editar Convênio' : 'Novo Convênio'}</h3>
-                                    <div className="space-y-3">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome da Loja / Parceiro" value={agreementForm.name} onChange={e=>setAgreementForm({...agreementForm, name:e.target.value})} />
-                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={agreementForm.discountType} onChange={e=>setAgreementForm({...agreementForm, discountType:e.target.value})}><option value="free_time">Tempo Grátis (min)</option><option value="percentage">Desconto (%)</option></select>
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Valor (Minutos ou %)" value={agreementForm.value} onChange={e=>setAgreementForm({...agreementForm, value:e.target.value})} />
+                            {modal === 'service_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700">
+                                    <h3 className="text-xl font-bold text-white mb-4">Adicionar Serviços</h3>
+                                    <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
+                                        {servicesList.map(service => { const isSelected = addServiceForm.selectedServices.find(s => s.id === service.id); return (<div key={service.id} onClick={() => toggleServiceSelection(service.id)} className={`p-4 rounded border cursor-pointer flex justify-between items-center transition ${isSelected ? 'bg-cyan-900/50 border-cyan-500' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}`}><span className="text-white">{service.name}</span><span className="text-emerald-400 font-bold">{formatCurrency(service.price)}</span></div>) })}
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleAgreementSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                    <div className="flex justify-between items-center pt-4 border-t border-slate-700">
+                                        <div className="text-sm text-slate-400">Total: <span className="text-white font-bold">{formatCurrency(addServiceForm.selectedServices.reduce((acc, s)=>acc+s.price,0))}</span></div>
+                                        <div className="flex gap-2"><button onClick={()=>setModal(null)} className="px-4 text-slate-400">Cancelar</button><button onClick={handleAddServices} className="px-6 py-2 bg-cyan-600 text-white rounded font-bold">Salvar</button></div>
+                                    </div>
                                 </div>
                             )}
-
                         </div>
                     )}
                 </div>
