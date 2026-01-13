@@ -271,17 +271,25 @@
 
         // --- APP ---
         function App() {
-            const [view, setView] = useState('login');
-            const [userRole, setUserRole] = useState('operator'); // 'admin' or 'operator'
+            const [view, setView] = useState('loading'); // Alterado para loading inicialmente
+            const [userRole, setUserRole] = useState('admin'); 
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
             const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
-            const [credentials, setCredentials] = useState(() => {
-                const storedCreds = localStorage.getItem('parkingpro_credentials');
-                return storedCreds ? JSON.parse(storedCreds) : { user: 'admin', pass: '1234' };
+            const [config, setConfig] = useState({ 
+                name: '', 
+                address: 'Av. Paulista, 1000 - SP', 
+                totalSpots: 50, 
+                priceCarHour: 15.00, 
+                priceMotoHour: 8.00, 
+                toleranceMin: 15, 
+                dailyRate: 60.00,
+                requireLogin: false, // Nova opção: desativado por padrão
+                loginUser: 'admin',
+                loginPass: '1234'
             });
 
-            const [config, setConfig] = useState({ name: '', address: 'Av. Paulista, 1000 - SP', totalSpots: 50, priceCarHour: 15.00, priceMotoHour: 8.00, toleranceMin: 15, dailyRate: 60.00 });
+            const [credentials, setCredentials] = useState({ user: 'admin', pass: '1234' });
 
             const [tickets, setTickets] = useState([]); 
             const [history, setHistory] = useState([]); 
@@ -348,28 +356,21 @@
 
             // Função para Limpar Cache e Forçar Atualização
             const hardAppReset = async () => {
-                // Solicita confirmação do usuário antes de proceder
                 if (confirm("Limpar cache e forçar atualização? Isso recarregará o sistema.")) {
                     try {
-                        // 1. Desregistrar todos os Service Workers
                         if ('serviceWorker' in navigator) {
                             const registrations = await navigator.serviceWorker.getRegistrations();
                             for (let reg of registrations) { 
                                 await reg.unregister(); 
                             }
                         }
-                        
-                        // 2. Limpar todos os nomes de Cache API
                         if ('caches' in window) {
                             const cacheNames = await caches.keys();
                             await Promise.all(
                                 cacheNames.map(name => caches.delete(name))
                             );
                         }
-                        
-                        // 3. Forçar o recarregamento da página ignorando o cache do browser
                         window.location.reload(true);
-                        
                     } catch (e) { 
                         console.error("Erro ao realizar o reset:", e);
                         alert("Erro ao tentar limpar o cache automaticamente. Por favor, recarregue manualmente.");
@@ -403,7 +404,7 @@
                             setState(data);
                         }, err => console.error(`Sync error ${collectionName}`, err));
                         return () => unsubscribe();
-                    } else if (view === 'app') {
+                    } else if (view !== 'loading' && view !== 'login') {
                         const stored = localStorage.getItem(`parkingpro_${collectionName}`);
                         if (stored) setState(JSON.parse(stored));
                         else if (fallbackData) setState(fallbackData);
@@ -450,7 +451,7 @@
                         }
                     });
                     return () => unsubscribe();
-                } else if (view === 'app') {
+                } else if (view !== 'loading' && view !== 'login') {
                     const stored = localStorage.getItem('parkingpro_servicesList');
                     if (stored) setServicesList(JSON.parse(stored));
                     else {
@@ -461,8 +462,26 @@
             }, [db, view]);
 
             useEffect(() => {
-                const stored = localStorage.getItem('parkingpro_config');
-                if (stored) setConfig(JSON.parse(stored));
+                const storedConfig = localStorage.getItem('parkingpro_config');
+                const storedCreds = localStorage.getItem('parkingpro_credentials');
+                
+                let currentConfig = config;
+                if (storedConfig) {
+                    currentConfig = JSON.parse(storedConfig);
+                    setConfig(currentConfig);
+                }
+
+                if (storedCreds) {
+                    setCredentials(JSON.parse(storedCreds));
+                }
+
+                // Lógica de acesso automático
+                if (currentConfig.requireLogin) {
+                    setView('login');
+                } else {
+                    setUserRole('admin'); // Acesso total sem login
+                    setView('app');
+                }
             }, []);
 
             const saveItem = async (col, item, idOverride) => {
@@ -493,7 +512,10 @@
             }, [tickets, history, subscribers, agreements, checklists, finances, team, clients, suppliers, servicesList, config]);
 
             const handleLogin = (u, p, remember) => { 
-                if (u === credentials.user && p === credentials.pass) { 
+                const validUser = credentials.user;
+                const validPass = credentials.pass;
+
+                if (u === validUser && p === validPass) { 
                     if (remember) { 
                         localStorage.setItem('parkingpro_saved_user', u); 
                         localStorage.setItem('parkingpro_saved_pass', p); 
@@ -702,15 +724,16 @@
 
             const stats = useMemo(() => {
                 const occupied = tickets.length; const free = config.totalSpots - occupied;
-                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.total || 0), 0);
-                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.value || 0), 0);
-                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.value || 0), 0);
+                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
+                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
                 const totalRevenue = ticketsRevenue + extraRevenue; const balance = totalRevenue - expenses;
                 return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
             }, [tickets, history, subscribers, finances, config]);
 
             const saveConfig = () => { localStorage.setItem('parkingpro_config', JSON.stringify(config)); notify('Configurações salvas!'); };
 
+            if (view === 'loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-500 font-bold animate-pulse">CARREGANDO...</div>;
             if (view === 'login') return <LoginScreen onLogin={handleLogin} systemName={config.name} />;
 
             return (
@@ -1049,7 +1072,9 @@
                             {tab === 'config' && userRole === 'admin' && (
                                 <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
                                     <div className="bg-slate-800 p-8 rounded-xl border border-slate-700">
-                                        <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4">Configurações do Sistema</h3>
+                                        <h3 className="font-bold text-2xl text-white mb-6 border-b border-slate-700 pb-4 flex items-center gap-2">
+                                            <i className="ph-fill ph-gear"></i> Ajustes do Sistema
+                                        </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-4">
                                                 <div><label className="text-sm font-bold text-slate-400 block mb-2">Nome do Estabelecimento</label><input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
@@ -1065,15 +1090,65 @@
                                                 <div><label className="text-sm font-bold text-slate-400 block mb-2">Diária (8h+)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.dailyRate} onChange={e=>setConfig({...config, dailyRate:e.target.value})} /></div>
                                             </div>
                                         </div>
-                                        <div className="mt-8 pt-8 border-t border-slate-700">
-                                            <h3 className="font-bold text-xl mb-4">Alterar Senha Admin</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <input className="bg-slate-900 border border-slate-700 p-3 rounded" type="password" placeholder="Senha Atual" value={passwordForm.current} onChange={e=>setPasswordForm({...passwordForm, current:e.target.value})} />
-                                                <input className="bg-slate-900 border border-slate-700 p-3 rounded" type="password" placeholder="Nova Senha" value={passwordForm.new} onChange={e=>setPasswordForm({...passwordForm, new:e.target.value})} />
-                                                <button onClick={handleChangePassword} className="bg-slate-700 hover:bg-slate-600 py-3 rounded font-bold">Atualizar</button>
+
+                                        {/* NOVO: OPÇÃO DE LOGIN OPCIONAL */}
+                                        <div className="mt-8 pt-8 border-t border-slate-700 space-y-6">
+                                            <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
+                                                <i className="ph-fill ph-lock"></i> Segurança e Acesso
+                                            </h3>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-slate-900 rounded-lg border border-slate-700">
+                                                <div>
+                                                    <p className="font-bold text-white">Ativar Tela de Login</p>
+                                                    <p className="text-xs text-slate-500">Se desativado, o sistema abrirá direto no painel.</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setConfig({...config, requireLogin: !config.requireLogin})}
+                                                    className={`w-14 h-8 rounded-full transition-all relative ${config.requireLogin ? 'bg-cyan-600' : 'bg-slate-700'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${config.requireLogin ? 'left-7' : 'left-1'}`}></div>
+                                                </button>
                                             </div>
+
+                                            {config.requireLogin && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900 rounded-lg border border-slate-700 animate-fade-in">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Usuário para Acesso</label>
+                                                        <input 
+                                                            className="w-full bg-slate-800 border border-slate-700 p-3 rounded text-white" 
+                                                            value={credentials.user} 
+                                                            onChange={e => setCredentials({...credentials, user: e.target.value})}
+                                                            placeholder="Ex: admin"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Senha para Acesso</label>
+                                                        <input 
+                                                            type="password"
+                                                            className="w-full bg-slate-800 border border-slate-700 p-3 rounded text-white" 
+                                                            value={credentials.pass} 
+                                                            onChange={e => setCredentials({...credentials, pass: e.target.value})}
+                                                            placeholder="Sua senha secreta"
+                                                        />
+                                                    </div>
+                                                    <div className="md:col-span-2">
+                                                        <button 
+                                                            onClick={() => {
+                                                                localStorage.setItem('parkingpro_credentials', JSON.stringify(credentials));
+                                                                notify('Credenciais atualizadas com sucesso!');
+                                                            }}
+                                                            className="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-bold text-sm transition"
+                                                        >
+                                                            Salvar Novas Credenciais
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                        <button onClick={saveConfig} className="mt-8 bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3 rounded-lg font-bold">Salvar Configurações</button>
+
+                                        <button onClick={saveConfig} className="mt-8 w-full md:w-auto bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-4 rounded-lg font-bold shadow-lg shadow-cyan-900/20 active:scale-95 transition">
+                                            SALVAR TODAS AS CONFIGURAÇÕES
+                                        </button>
                                     </div>
                                 </div>
                             )}
