@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Parking Pro - Gestão de Estacionamento & Lava-rápido</title>
     
+    <!-- PWA META TAGS (Implantado conforme GUIA APP.pdf) -->
+    <meta name="theme-color" content="#0891b2">
+    <meta name="description" content="Parking Pro - Gestão Inteligente de Estacionamento e Lava-rápido">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Parking Pro">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1087/1087815.png">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -95,6 +105,24 @@
             cursor: pointer;
         }
     </style>
+    
+    <!-- REGISTRO SERVICE WORKER (PWA) - CORRIGIDO PARA AMBIENTES SANDBOX -->
+    <script>
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA: Service Worker registrado com sucesso:', reg.scope))
+                    .catch(err => {
+                        // Apenas loga o erro se não for um problema de protocolo
+                        if (!err.message.includes('protocol')) {
+                            console.error('PWA: Erro ao registrar Service Worker:', err);
+                        }
+                    });
+            });
+        } else {
+            console.log('PWA: Service Worker ignorado (protocolo não suportado ou funcionalidade ausente).');
+        }
+    </script>
 </head>
 <body>
     <div id="root"></div>
@@ -315,6 +343,37 @@
                 subscribers: 'Mensalistas',
                 agreements: 'Convênios',
                 config: 'Configurações'
+            };
+
+            // Função para Limpar Cache e Forçar Atualização
+            const hardAppReset = async () => {
+                // Solicita confirmação do usuário antes de proceder
+                if (confirm("Limpar cache e forçar atualização? Isso recarregará o sistema.")) {
+                    try {
+                        // 1. Desregistrar todos os Service Workers
+                        if ('serviceWorker' in navigator) {
+                            const registrations = await navigator.serviceWorker.getRegistrations();
+                            for (let reg of registrations) { 
+                                await reg.unregister(); 
+                            }
+                        }
+                        
+                        // 2. Limpar todos os nomes de Cache API
+                        if ('caches' in window) {
+                            const cacheNames = await caches.keys();
+                            await Promise.all(
+                                cacheNames.map(name => caches.delete(name))
+                            );
+                        }
+                        
+                        // 3. Forçar o recarregamento da página ignorando o cache do browser
+                        window.location.reload(true);
+                        
+                    } catch (e) { 
+                        console.error("Erro ao realizar o reset:", e);
+                        alert("Erro ao tentar limpar o cache automaticamente. Por favor, recarregue manualmente.");
+                    }
+                }
             };
 
             useEffect(() => {
@@ -732,6 +791,23 @@
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Fluxo Financeiro (7 Dias)</h3><ParkingChart historyData={history} financeData={finances} /></div>
                                         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Mapa de Vagas</h3><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto pr-2">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => { const isOccupied = i < tickets.length; return (<div key={i} className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold transition ${isOccupied ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>); })}</div></div>
+                                    </div>
+
+                                    {/* Interface do Botão de Manutenção */}
+                                    <div className="bg-white rounded-xl shadow-lg p-6 border-t-4 border-yellow-600">
+                                        <h3 className="text-xl font-bold text-gray-800 mb-4">🛠️ Manutenção</h3>
+                                        <div className="space-y-4">
+                                            <p className="text-sm text-gray-600">
+                                                Utilize esta opção caso o sistema apresente falhas ou para receber novas atualizações. Isso limpará o cache local e forçará o recarregamento da aplicação.
+                                            </p>
+                                            <button 
+                                                onClick={hardAppReset}
+                                                className="w-full bg-red-600 text-white px-4 py-4 rounded-lg font-bold text-sm hover:bg-red-700 transition shadow-lg flex items-center justify-center gap-2 transform hover:scale-[1.02]"
+                                            >
+                                                <span className="text-lg">🔄</span>
+                                                LIMPAR CACHE E FORÇAR ATUALIZAÇÃO
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
