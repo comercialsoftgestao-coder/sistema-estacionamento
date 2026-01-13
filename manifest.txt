@@ -1,22 +1,22 @@
 {
   "name": "Parking Pro - Gestão Inteligente",
   "short_name": "Parking Pro",
-  "description": "Sistema de Gestão de Estacionamento e Lava-rápido",
-  "start_url": "./",
-  "scope": "/",
+  "description": "Sistema Profissional de Gestão de Estacionamento e Lava-rápido",
+  "start_url": "./index.html",
+  "scope": ".",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0f172a",
   "theme_color": "#0891b2",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1087/1087815.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2991/2991201.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1087/1087815.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2991/2991201.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
