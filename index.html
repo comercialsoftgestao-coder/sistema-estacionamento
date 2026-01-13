@@ -535,10 +535,11 @@
                 setModal('print_exit'); notify('Saída registrada!'); 
             };
 
+            const [editingAgreementId, setEditingAgreementId] = useState(null);
+
             const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); if(!db) setChecklists(prev => [newChecklist, ...prev]); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
             
             const [editingTeamId, setEditingTeamId] = useState(null);
-            const [editingAgreementId, setEditingAgreementId] = useState(null);
             const [editingFinanceId, setEditingFinanceId] = useState(null);
             const [editingItemIsHistory, setEditingItemIsHistory] = useState(false); 
 
@@ -701,9 +702,9 @@
 
             const stats = useMemo(() => {
                 const occupied = tickets.length; const free = config.totalSpots - occupied;
-                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
-                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
-                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
+                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.total || 0), 0);
+                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.value || 0), 0);
+                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + (curr.value || 0), 0);
                 const totalRevenue = ticketsRevenue + extraRevenue; const balance = totalRevenue - expenses;
                 return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
             }, [tickets, history, subscribers, finances, config]);
@@ -830,7 +831,7 @@
                                                 </div>
                                                 {loadingCamera && <p className="text-xs text-cyan-400 text-center animate-pulse mt-1">Lendo placa...</p>}
                                             </div>
-                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Carro' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Moto' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>Moto</button></div>
+                                            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700"><button onClick={()=>setEntryForm({...entryForm, type: 'Carro'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Carro' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>Carro</button><button onClick={()=>setEntryForm({...entryForm, type: 'Moto'})} className={`flex-1 py-3 rounded text-base md:text-sm font-bold transition ${entryForm.type === 'Moto' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>Moto</button></div>
                                             <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded-lg text-base md:text-sm text-white" placeholder="Modelo (Opcional)" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
                                             <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-red-400 font-bold mb-2 uppercase flex items-center gap-1"><i className="ph-fill ph-warning"></i> Checklist Avaria</p><div className="grid grid-cols-2 gap-2 mb-2">{commonDamages.map(item => (<div key={item} className="flex items-center gap-2"><input type="checkbox" id={`dmg-${item}`} checked={entryForm.damages.includes(item)} onChange={e => { const newDamages = e.target.checked ? [...entryForm.damages, item] : entryForm.damages.filter(i => i !== item); setEntryForm({...entryForm, damages: newDamages}); }} className="accent-red-500 w-5 h-5" /><label htmlFor={`dmg-${item}`} className="text-xs text-slate-300 cursor-pointer">{item}</label></div>))}</div><input className="w-full bg-slate-800 border border-slate-600 p-3 rounded text-base md:text-xs text-white" placeholder="Obs: Avaria específica..." value={entryForm.notes} onChange={e=>setEntryForm({...entryForm, notes:e.target.value})} /></div>
                                             <div className="bg-slate-900 p-3 rounded-lg border border-slate-700"><p className="text-xs text-slate-500 font-bold mb-2 uppercase">Ajuste Manual</p><div className="grid grid-cols-2 gap-2"><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualEntry} onChange={e=>setEntryForm({...entryForm, manualEntry:e.target.value})} /><input type="datetime-local" className="bg-slate-800 border border-slate-600 p-2 rounded text-white text-[10px]" value={entryForm.manualExit} onChange={e=>setEntryForm({...entryForm, manualExit:e.target.value})} /></div></div>
@@ -1022,6 +1023,28 @@
                                 </div>
                             )}
 
+                            {/* CONVÊNIOS */}
+                            {tab === 'agreements' && userRole === 'admin' && (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-white">Gestão de Convênios</h3>
+                                        <button onClick={() => {setEditingAgreementId(null); setAgreementForm({name:'', discountType:'free_time', value:0}); setModal('agreement_manager');}} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> Novo Convênio</button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {agreements.map(a => (
+                                            <div key={a.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                                                <h4 className="font-bold text-white text-lg">{a.name}</h4>
+                                                <p className="text-sm text-cyan-400 font-bold">{a.discountType === 'free_time' ? `${a.value} min grátis` : `${a.value}% de desconto`}</p>
+                                                <div className="flex gap-2 mt-4">
+                                                    <button onClick={() => {setEditingAgreementId(a.id); setAgreementForm(a); setModal('agreement_manager');}} className="flex-1 py-2 bg-slate-700 rounded text-xs font-bold transition hover:bg-slate-600">Editar</button>
+                                                    <button onClick={() => { if(confirm('Excluir convênio?')) deleteItem('agreements', a.id) }} className="p-2 bg-red-900/30 text-red-400 rounded transition hover:bg-red-900/50"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* CONFIGURAÇÕES */}
                             {tab === 'config' && userRole === 'admin' && (
                                 <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -1082,7 +1105,7 @@
                             )}
 
                             {modal === 'confirm_exit' && activeTicket && (
-                                <div className="bg-slate-800 text-white p-6 rounded-xl max-w-md w-full border border-slate-700">
+                                <div className="bg-slate-800 text-white p-6 rounded-xl max-w-md w-full border border-slate-700 shadow-2xl">
                                     <h3 className="text-xl font-bold mb-4">Fechar Ticket - {activeTicket.plate}</h3>
                                     <div className="space-y-4 mb-6">
                                         <div className="flex justify-between"><span className="text-slate-400">Permanência:</span><span className="font-bold">{activeTicket.durationHours}h</span></div>
@@ -1093,25 +1116,8 @@
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>setModal(null)} className="flex-1 bg-slate-700 py-3 rounded font-bold">Cancelar</button>
-                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 py-3 rounded font-bold">Confirmar Saída</button>
+                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 py-3 rounded font-bold transition active:scale-95">Confirmar Saída</button>
                                     </div>
-                                </div>
-                            )}
-                            
-                            {modal === 'print_exit' && activeTicket && (
-                                <div className="bg-white text-black p-6 rounded-xl max-w-sm w-full relative">
-                                    <button onClick={() => setModal(null)} className="absolute top-2 right-2 text-gray-500 no-print"><i className="ph-bold ph-x text-xl"></i></button>
-                                    <div id="print-area">
-                                        <div className="text-center font-mono">
-                                            <h2 className="font-bold text-xl">{config.name}</h2>
-                                            <p className="text-xs">RECIBO DE PAGAMENTO</p>
-                                            <div className="my-4 border-b-2 border-dashed border-black"></div>
-                                            <p className="text-sm">PLACA: {activeTicket.plate}</p>
-                                            <p className="text-sm">TOTAL: {formatCurrency(activeTicket.total)}</p>
-                                            <p className="text-xs mt-4">Obrigado pela preferência!</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 no-print">Imprimir Recibo</button>
                                 </div>
                             )}
 
@@ -1152,6 +1158,46 @@
                                     <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleClientSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
                                 </div>
                             )}
+
+                            {modal === 'supplier_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">{editSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+                                    <div className="space-y-3">
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Razão Social / Nome" value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm, name:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Contato / Email / Tel" value={supplierForm.contact} onChange={e=>setSupplierForm({...supplierForm, contact:e.target.value})} />
+                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={supplierForm.category} onChange={e=>setSupplierForm({...supplierForm, category:e.target.value})}><option>Peças</option><option>Serviços</option><option>Limpeza</option><option>TI</option><option>Outros</option></select>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleSupplierSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                </div>
+                            )}
+
+                            {modal === 'subscriber_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">{editSubscriber ? 'Editar Mensalista' : 'Novo Mensalista'}</h3>
+                                    <div className="space-y-3">
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome do Cliente" value={subscriberForm.name} onChange={e=>setSubscriberForm({...subscriberForm, name:e.target.value})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white uppercase" placeholder="Placa" value={subscriberForm.plate} onChange={e=>setSubscriberForm({...subscriberForm, plate:e.target.value.toUpperCase()})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Modelo do Veículo" value={subscriberForm.model} onChange={e=>setSubscriberForm({...subscriberForm, model:e.target.value})} />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div><label className="text-[10px] text-slate-500 font-bold uppercase">Dia Vencimento</label><input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" value={subscriberForm.dueDay} onChange={e=>setSubscriberForm({...subscriberForm, dueDay:e.target.value})} /></div>
+                                            <div className="flex items-center gap-2 mt-6"><input type="checkbox" id="sub_active" checked={subscriberForm.active} onChange={e=>setSubscriberForm({...subscriberForm, active:e.target.checked})} className="w-5 h-5 accent-emerald-500" /><label htmlFor="sub_active" className="text-sm">Ativo</label></div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleSubscriberSave} className="bg-violet-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                </div>
+                            )}
+
+                            {modal === 'agreement_manager' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">{editingAgreementId ? 'Editar Convênio' : 'Novo Convênio'}</h3>
+                                    <div className="space-y-3">
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome da Loja / Parceiro" value={agreementForm.name} onChange={e=>setAgreementForm({...agreementForm, name:e.target.value})} />
+                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={agreementForm.discountType} onChange={e=>setAgreementForm({...agreementForm, discountType:e.target.value})}><option value="free_time">Tempo Grátis (min)</option><option value="percentage">Desconto (%)</option></select>
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Valor (Minutos ou %)" value={agreementForm.value} onChange={e=>setAgreementForm({...agreementForm, value:e.target.value})} />
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={handleAgreementSave} className="bg-cyan-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
+                                </div>
+                            )}
                             
                             {modal === 'checklist' && (
                                 <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
@@ -1174,6 +1220,43 @@
                                         <div className="text-sm text-slate-400">Total: <span className="text-white font-bold">{formatCurrency(addServiceForm.selectedServices.reduce((acc, s)=>acc+s.price,0))}</span></div>
                                         <div className="flex gap-2"><button onClick={()=>setModal(null)} className="px-4 text-slate-400">Cancelar</button><button onClick={handleAddServices} className="px-6 py-2 bg-cyan-600 text-white rounded font-bold">Salvar</button></div>
                                     </div>
+                                </div>
+                            )}
+
+                            {modal === 'service_types' && (
+                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">Configurar Catálogo de Serviços</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                        <input className="bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
+                                        <div className="flex gap-2">
+                                            <input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Preço" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
+                                            <button onClick={saveServiceConfig} className="bg-emerald-600 text-white px-4 rounded font-bold"><i className={`ph-bold ${editingServiceId ? 'ph-check' : 'ph-plus'}`}></i></button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                                        {servicesList.map(s => (
+                                            <div key={s.id} className="bg-slate-900 p-3 rounded flex justify-between items-center border border-slate-700 group">
+                                                <div><p className="font-bold text-white">{s.name}</p><p className="text-xs text-emerald-400">{formatCurrency(s.price)}</p></div>
+                                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                                    <button onClick={()=>handleEditService(s)} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button>
+                                                    <button onClick={()=>removeServiceConfig(s.id)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button onClick={()=>setModal(null)} className="w-full mt-6 bg-slate-700 py-3 rounded font-bold">Fechar</button>
+                                </div>
+                            )}
+
+                            {modal === 'new_wash_entry' && (
+                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">Entrada Direta Lava-rápido</h3>
+                                    <div className="space-y-4">
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-2xl font-mono text-center uppercase" placeholder="PLACA" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} />
+                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded" placeholder="Modelo" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
+                                        <button onClick={handleEntry} className="w-full bg-emerald-600 py-4 rounded font-bold text-lg active:scale-95 transition">Registrar e Abrir Serviços</button>
+                                    </div>
+                                    <button onClick={()=>setModal(null)} className="w-full mt-2 text-slate-500">Cancelar</button>
                                 </div>
                             )}
                         </div>
