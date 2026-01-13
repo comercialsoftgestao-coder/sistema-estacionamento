@@ -713,6 +713,23 @@
                                         <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Fluxo Financeiro (7 Dias)</h3><ParkingChart historyData={history} financeData={finances} /></div>
                                         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Mapa de Vagas</h3><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto pr-2">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => { const isOccupied = i < tickets.length; return (<div key={i} className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold transition ${isOccupied ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>); })}</div></div>
                                     </div>
+                                    
+                                    {/* BLOCO DE SUPORTE - GESTÃO MASTER */}
+                                    <div className="bg-gradient-to-r from-blue-700 to-blue-500 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-blue-900 mt-6">
+                                        <div className="flex items-center gap-5">
+                                            <div className="text-5xl">🆘</div>
+                                            <div>
+                                                <h4 className="text-2xl font-black uppercase tracking-tighter">Fale com o Suporte</h4>
+                                                <p className="text-blue-100 opacity-90">Clique no botão ao lado para iniciar uma conversa direta com nossa equipe técnica.</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => window.open('https://wa.me/5511932186193', '_blank')}
+                                            className="bg-white text-blue-700 px-10 py-4 rounded-xl font-black shadow-lg hover:bg-blue-50 transition transform hover:scale-105 uppercase text-sm"
+                                        >
+                                            CHAMAR NO WHATSAPP
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
@@ -1333,4 +1350,3 @@
     </script>
 </body>
 </html>
-
