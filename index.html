@@ -312,7 +312,7 @@
                     // Simulação de cadastro
                 }
 
-                // Autenticação Firebase para acesso ao DB (Tentativa Robusta)
+                // Autenticação Firebase para acesso ao DB
                 try {
                     const auth = firebase.auth();
                     if (!auth.currentUser) {
@@ -324,13 +324,18 @@
                         }
                     }
                 } catch (err) {
-                    console.error("Erro auth warning", err);
-                    // Correção: Se a configuração de nuvem falhar, permitimos o login em modo local/offline
-                    if (err.code === 'auth/configuration-not-found' || err.code === 'auth/operation-not-allowed' || err.code === 'auth/invalid-api-key' || err.message.includes('Bad Request')) {
-                         console.warn("Auth nuvem indisponível ou mal configurada. Ativando MODO OFFLINE SEGURO.");
-                         // Não bloqueia o usuário, apenas segue sem login na nuvem
+                    // SILENT FAIL SE A CONFIGURAÇÃO DE NUVEM FALHAR
+                    // Isso permite que o app funcione com o Cofre Local se a nuvem estiver mal configurada
+                    const isConfigError = err.code === 'auth/configuration-not-found' || 
+                                          err.code === 'auth/operation-not-allowed' || 
+                                          err.code === 'auth/invalid-api-key' || 
+                                          err.message.includes('Bad Request');
+                                          
+                    if (isConfigError) {
+                         console.warn("Modo Offline: Autenticação nuvem ignorada devido à configuração do projeto.");
+                         // Permite seguir
                     } else {
-                        // Outros erros de rede reais podem ser fatais, mas vamos tentar seguir
+                        console.error("Erro auth critico", err);
                         setError('Aviso: Conexão instável. Tente novamente.');
                         setLoading(false);
                         return;
@@ -406,10 +411,10 @@
 
         // --- APP ---
         function App() {
-            const [view, setView] = useState('identity'); // Alterado para identity
+            const [view, setView] = useState('identity'); 
             const [userRole, setUserRole] = useState('admin');
-            const [currentUser, setCurrentUser] = useState(null); // Estado do usuário logado
-            const [encryptionKey, setEncryptionKey] = useState(null); // Chave do cofre
+            const [currentUser, setCurrentUser] = useState(null); 
+            const [encryptionKey, setEncryptionKey] = useState(null); 
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
             const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
@@ -426,7 +431,6 @@
                 loginPass: '1234'
             });
 
-            // Estados de Dados
             const [tickets, setTickets] = useState([]); 
             const [history, setHistory] = useState([]); 
             const [subscribers, setSubscribers] = useState([]); 
@@ -453,10 +457,12 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            // --- FIREBASE SETUP FLEXÍVEL ---
+            // --- FIREBASE SETUP COM CHAVES FORNECIDAS ---
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            
+            // CONFIGURAÇÃO EXATA FORNECIDA PELO USUÁRIO
             const defaultFirebaseConfig = {
-                apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE", // Chave restaurada para corrigir erro auth
+                apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                 authDomain: "estacionamento-332eb.firebaseapp.com",
                 projectId: "estacionamento-332eb",
                 storageBucket: "estacionamento-332eb.firebasestorage.app",
@@ -521,6 +527,8 @@
                 const initFirebase = async () => {
                     if (!firebase.apps.length) {
                         try {
+                            // PRIORIDADE PARA A CONFIGURAÇÃO FORNECIDA MANUALMENTE
+                            // Se __firebase_config estiver disponível, use, senão use default
                             const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
                             firebase.initializeApp(configToUse);
                         } catch (e) {
@@ -529,8 +537,6 @@
                     }
                     
                     try {
-                        // Não inicia DB ainda, espera autenticação no IdentityScreen
-                        // Apenas prepara objeto
                         const firestore = firebase.firestore();
                         setDb(firestore);
                         setIsOnline(true);
@@ -584,9 +590,7 @@
                     }
 
                     // 2. SE ESTIVER ONLINE E AUTENTICADO, TENTA CONECTAR NA NUVEM
-                    // Se não tiver auth (erro de config), apenas ignora e usa local
                     if (db && firebase.auth().currentUser) {
-                        // CAMINHO BLINDADO: artifacts/APP_ID/public/data/USER_COLLECTION
                         const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
                             .onSnapshot(snapshot => {
                                 const data = snapshot.docs.map(doc => {
@@ -601,31 +605,13 @@
                                     }
                                     return { ...decrypted, id: doc.id };
                                 }); 
-                                setState(data); // Atualiza com dados da nuvem (mais recentes)
+                                setState(data); // Atualiza com dados da nuvem
                             }, err => {
                                 console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}. Usando dados locais.`, err);
                             });
                         return () => unsubscribe();
                     }
                 }, [db, currentUser, encryptionKey]);
-            };
-
-            const getDemoData = () => {
-                const demoServices = [
-                    {id: 's1', name: 'Lavagem Simples', price: 40.00}, 
-                    {id: 's2', name: 'Lavagem Completa + Cera', price: 80.00}, 
-                    {id: 's3', name: 'Lavagem de Motor', price: 60.00},
-                    {id: 's4', name: 'Higienização Interna', price: 150.00}, 
-                    {id: 's5', name: 'Polimento', price: 250.00},
-                    {id: 's6', name: 'Cristalização', price: 350.00},
-                    {id: 's7', name: 'Vitrificação', price: 800.00},
-                    {id: 's8', name: 'Lavagem de Bancos', price: 120.00},
-                    {id: 's9', name: 'Oxi-Sanitização', price: 100.00},
-                    {id: 's10', name: 'Hidratação de Couro', price: 180.00},
-                    {id: 's11', name: 'Remoção de Chuva Ácida', price: 150.00},
-                    {id: 's12', name: 'Pretinho Pneus', price: 10.00}
-                ];
-                return { demoServices };
             };
 
             // Ativação dos Syncs apenas quando logado
@@ -647,18 +633,15 @@
                     return;
                 }
 
-                // ATUALIZAÇÃO OTIMISTA: Atualiza o estado local imediatamente
-                // O useEffect de backup vai salvar no localStorage automaticamente
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() };
                 
                 // Mapeamento para atualizar o state correto na memória
-                // Isso garante que a UI atualize mesmo sem internet
                 if (col === 'tickets') setTickets(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
                 if (col === 'history') setHistory(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'finances') setFinances(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'clients') setClients(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
-                // ... adicione outros se necessário, ou confie no reload
+                // ... outros states são atualizados via useEffect ou localmente se necessário
 
                 // TENTA SALVAR NA NUVEM (SE TIVER AUTH)
                 if (db && firebase.auth().currentUser) {
@@ -674,7 +657,6 @@
                         console.warn('Salvando apenas localmente (sem conexão nuvem)'); 
                     }
                 } else {
-                    // Apenas notifica que está offline, mas os dados já estão no state e vão pro localStorage
                     console.log("Salvo no modo Offline");
                 }
             };
@@ -682,12 +664,10 @@
             const deleteItem = async (col, id) => {
                 if (!currentUser) return;
                 
-                // Atualização Otimista Local
                 const strId = String(id);
                 if (col === 'tickets') setTickets(prev => prev.filter(i => String(i.id) !== strId));
                 if (col === 'history') setHistory(prev => prev.filter(i => String(i.id) !== strId));
                 if (col === 'finances') setFinances(prev => prev.filter(i => String(i.id) !== strId));
-                // ... outros
 
                 if (db && firebase.auth().currentUser) {
                     const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
@@ -712,6 +692,9 @@
                     setView('identity');
                 }
             };
+
+            // ... RESTO DO CÓDIGO (handlers de UI) ...
+            // (Para manter o arquivo completo e seguro, mantive todos os handlers abaixo intactos)
 
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
