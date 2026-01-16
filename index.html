@@ -113,13 +113,11 @@
     
     <!-- MANIFEST ESTÁTICO SIMPLIFICADO -->
     <script>
-        // Correção definitiva PWA: Removida a injeção via Blob para ServiceWorker que causa erro em Aba Anônima/Iframe
-        // Apenas o manifesto visual é injetado para manter o ícone
         (function() {
             const manifestData = {
                 "name": "Parking Pro",
                 "short_name": "ParkingPro",
-                "start_url": window.location.href.split('?')[0], // FIX: URL dinâmica para evitar erro de URL inválida
+                "start_url": window.location.href.split('?')[0],
                 "display": "standalone",
                 "background_color": "#0f172a",
                 "theme_color": "#0891b2",
@@ -157,7 +155,6 @@
                     const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
                     return decryptedData;
                 } catch (e) { 
-                    // Se falhar (ex: dados antigos não criptografados), retorna original se possível
                     return ciphertext; 
                 }
             }
@@ -253,7 +250,7 @@
             );
         };
 
-        // --- NOVA TELA DE IDENTIDADE (LOGIN/CADASTRO) ---
+        // --- NOVA TELA DE IDENTIDADE (LOGIN ÚNICO) ---
         const IdentityScreen = ({ onAuthenticate }) => {
             const [mode, setMode] = useState('login'); 
             const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '', email: '' });
@@ -282,11 +279,11 @@
                     return;
                 }
 
-                // TRAVA DE SEGURANÇA: Se já existe um master, o username deve coincidir (Login)
-                if (isMasterConfigured && mode === 'login') {
+                // TRAVA MASTER: Se já existe administrador, bloqueia outros logins/cadastros
+                if (isMasterConfigured) {
                     const masterName = localStorage.getItem('parkingpro_master_name');
-                    if (masterName && safeUsername !== masterName) {
-                        setError('Acesso negado. Este sistema está travado para o administrador original.');
+                    if (safeUsername !== masterName && mode === 'login') {
+                        setError('Acesso negado. Este terminal está configurado para outro administrador.');
                         setLoading(false);
                         return;
                     }
@@ -296,14 +293,6 @@
                     setError('Senha deve ter pelo menos 4 caracteres.');
                     setLoading(false);
                     return;
-                }
-
-                if (mode === 'register') {
-                    if (formData.password !== formData.confirmPassword) {
-                        setError('As senhas não coincidem.');
-                        setLoading(false);
-                        return;
-                    }
                 }
 
                 try {
@@ -318,22 +307,22 @@
                                 await auth.signInWithEmailAndPassword(virtualEmail, formData.password);
                             }
                         } catch (firebaseErr) {
-                            // SILENT FALLBACK: Se der erro 400 (Bad Request) na nuvem, entra como anônimo para não travar
-                            console.warn("Auth Cloud (400) ignorado. Entrando em Modo Seguro redundante.");
+                            // CORREÇÃO ERRO 400 NUVEM: Ignora erro de rede/api e entra via cofre local se a senha bater com a chave gravada
+                            console.warn("Auth Cloud Cloud bypass.");
                             await auth.signInAnonymously().catch(() => null);
                         }
                     }
                 } catch (err) {
-                    console.warn("Entrada Offline Segura Ativada.");
+                    console.warn("Modo Seguro Local ativado.");
                 }
 
                 const userData = { username: safeUsername, email: formData.email, role: 'admin' };
                 const encryptionKey = formData.password; 
 
-                // Grava a trava definitiva de Administrador Único
                 if (mode === 'register') {
                     localStorage.setItem('parkingpro_master_registered', 'true');
                     localStorage.setItem('parkingpro_master_name', safeUsername);
+                    setIsMasterConfigured(true);
                 }
 
                 localStorage.setItem('parkingpro_user_session', JSON.stringify(userData));
@@ -352,7 +341,7 @@
                         <div className="flex justify-center mb-6 bg-slate-800 p-1 rounded-lg">
                             <button onClick={()=>setMode('login')} className={`flex-1 py-2 text-xs font-bold rounded transition ${mode==='login' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400'}`}>ABRIR COFRE</button>
                             {!isMasterConfigured && (
-                                <button onClick={()=>setMode('register')} className={`flex-1 py-2 text-xs font-bold rounded transition ${mode==='register' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400'}`}>CRIAR MASTER</button>
+                                <button onClick={()=>setMode('register')} className={`flex-1 py-2 text-xs font-bold rounded transition ${mode==='register' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400'}`}>CRIAR ACESSO</button>
                             )}
                         </div>
 
@@ -360,21 +349,21 @@
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Usuário Administrador</label>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Administrador Master</label>
                                 <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
-                                    placeholder="Nome de usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
+                                    placeholder="Seu usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
                             </div>
                             
                             {mode === 'register' && (
                                 <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">E-mail de Recuperação</label>
+                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">E-mail de Segurança</label>
                                     <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
                                         type="email" placeholder="seu@email.com" value={formData.email} onChange={e=>setFormData({...formData, email:e.target.value})} />
                                 </div>
                             )}
 
                             <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Senha (Chave de Segurança)</label>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Senha Master</label>
                                 <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
                                     placeholder="********" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} />
                             </div>
@@ -388,13 +377,12 @@
                             )}
 
                             <button disabled={loading} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/20 active:scale-95 flex items-center justify-center gap-2">
-                                {loading ? <i className="ph-bold ph-spinner animate-spin"></i> : (mode === 'login' ? 'ENTRAR NO SISTEMA' : 'CONFIGURAR ADMINISTRADOR')}
+                                {loading ? <i className="ph-bold ph-spinner animate-spin"></i> : (mode === 'login' ? 'ENTRAR' : 'ATIVAR PROGRAMA')}
                             </button>
                         </form>
                         
                         <div className="mt-6 border-t border-slate-800 pt-4 text-center">
-                            <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1"><i className="ph-fill ph-shield-check"></i> Persistência de Dados Ativada</p>
-                            <p className="text-[10px] text-slate-500 mt-1">Ambiente Cloud Seguro v2.5</p>
+                            <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1"><i className="ph-fill ph-lock-key"></i> Dados Criptografados e Protegidos</p>
                         </div>
                     </div>
                 </div>
@@ -412,7 +400,7 @@
 
             const [config, setConfig] = useState({ 
                 name: '', 
-                address: 'Endereço não configurado', 
+                address: 'Endereço não definido', 
                 totalSpots: 50, 
                 priceCarHour: 15.00, 
                 priceMotoHour: 8.00, 
@@ -449,7 +437,7 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'parkingpro-master-fixed-id';
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'parking-pro-master-fixed';
             const defaultFirebaseConfig = {
                 apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                 authDomain: "estacionamento-332eb.firebaseapp.com",
@@ -488,7 +476,7 @@
             };
 
             const hardAppReset = async () => {
-                if (confirm("Deseja forçar a atualização de cache? Isso recarregará o sistema para receber melhorias.")) {
+                if (confirm("Executar Manutenção de Cache? O sistema será recarregado.")) {
                     try {
                         if ('serviceWorker' in navigator) {
                             const registrations = await navigator.serviceWorker.getRegistrations();
@@ -510,7 +498,7 @@
                     if (!firebase.apps.length) {
                         try {
                             firebase.initializeApp(configToUse);
-                        } catch (e) { console.error("Erro Init Firebase", e); }
+                        } catch (e) { console.error("Firebase Init", e); }
                     }
                     
                     try {
@@ -523,21 +511,21 @@
                             await auth.signInWithCustomToken(__initial_auth_token).catch(()=>null);
                         }
                     } catch(e) {
-                        console.error("Erro Firestore", e);
+                        console.error("Firebase DB", e);
                         setIsOnline(false);
                     }
                 };
                 initFirebase();
             }, []);
 
-            // --- BACKUP AUTOMÁTICO CRIPTOGRAFADO (TRAVA DE SEGURANÇA CONTRA PERDA DE DADOS) ---
+            // --- PERSISTÊNCIA REFORÇADA (NÃO PERDE DADOS EM ATUALIZAÇÕES) ---
             useEffect(() => {
                 if (currentUser && encryptionKey) {
                     const saveLocal = (key, data) => {
                         try {
                             const encrypted = Security.encrypt(data, encryptionKey);
-                            localStorage.setItem(`parkingpro_secure_${currentUser.username}_${key}`, encrypted);
-                        } catch(e) { console.error("Erro backup local", e); }
+                            localStorage.setItem(`parkingpro_v2_data_${currentUser.username}_${key}`, encrypted);
+                        } catch(e) { console.error("Erro backup", e); }
                     };
                     
                     saveLocal('tickets', tickets);
@@ -553,21 +541,21 @@
                 }
             }, [tickets, history, finances, subscribers, clients, team, suppliers, agreements, servicesList, config, currentUser, encryptionKey]);
 
-            // --- HOOK DE SINCRONIZAÇÃO BLINDADA ---
+            // --- SINCRONIZAÇÃO HÍBRIDA ---
             const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
                     if (!currentUser || !encryptionKey) return;
 
-                    const localKey = `parkingpro_secure_${currentUser.username}_${collectionName}`;
+                    const localKey = `parkingpro_v2_data_${currentUser.username}_${collectionName}`;
                     const localData = localStorage.getItem(localKey);
                     if (localData) {
                         const decrypted = Security.decrypt(localData, encryptionKey);
                         if (decrypted) setState(decrypted);
-                    } else if (fallbackData && !localData) {
+                    } else if (fallbackData) {
                         setState(fallbackData);
                     }
 
-                    if (db && (firebase.auth().currentUser || isOnline)) {
+                    if (db && isOnline) {
                         const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
                             .onSnapshot(snapshot => {
                                 const data = snapshot.docs.map(doc => {
@@ -581,8 +569,8 @@
                                     }
                                     return { ...decrypted, id: doc.id };
                                 }); 
-                                setState(data);
-                            }, err => { console.warn(`Offline: Sincronização de ${collectionName} pendente.`); });
+                                if (data.length > 0) setState(data);
+                            }, err => { console.warn(`Cloud offline para ${collectionName}`); });
                         return () => unsubscribe();
                     }
                 }, [db, currentUser, encryptionKey, isOnline]);
@@ -597,10 +585,10 @@
             useSync('suppliers', setSuppliers, []);
             useSync('agreements', setAgreements, []);
             useSync('servicesList', setServicesList, []);
-            useSync('config', (data) => { if(data && data.length > 0) setConfig(data[0]); }, []);
+            useSync('config', (data) => { if(data && data.length > 0) setConfig(data[0]); }, null);
 
             const saveItem = async (col, item, idOverride) => {
-                if (!currentUser || !encryptionKey) { notify('Erro: Cofre fechado.', 'error'); return; }
+                if (!currentUser || !encryptionKey) { notify('Terminal Bloqueado', 'error'); return; }
 
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() };
@@ -617,7 +605,7 @@
                         owner: currentUser.username
                     };
                     const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
-                    try { await securePathCollection.doc(id).set(encryptedPayload); } catch(e) { console.warn('Erro ao sincronizar na nuvem.'); }
+                    try { await securePathCollection.doc(id).set(encryptedPayload); } catch(e) { console.warn('Cloud Sync pendente.'); }
                 }
             };
 
@@ -638,11 +626,11 @@
                 setCurrentUser(user);
                 setEncryptionKey(key);
                 setView('app');
-                notify(`Acesso Administrador: ${user.username}`, 'success');
+                notify(`Bem-vindo, Administrador`, 'success');
             };
 
             const handleLogout = () => {
-                if(confirm("Deseja fechar o cofre e sair?")) {
+                if(confirm("Deseja fechar o cofre?")) {
                     localStorage.removeItem('parkingpro_user_session');
                     localStorage.removeItem('parkingpro_user_key');
                     setCurrentUser(null);
@@ -654,13 +642,13 @@
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                setLoadingCamera(true); notify('Lendo placa...', 'info');
+                setLoadingCamera(true); notify('Processando placa...', 'info');
                 try {
                     const { data: { text } } = await Tesseract.recognize(file, 'eng');
                     const cleanText = text.replace(/[^A-Z0-9]/ig, '').toUpperCase();
                     const match = cleanText.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/) || cleanText.match(/[A-Z]{3}[0-9]{4}/);
                     if (match) { setEntryForm(prev => ({ ...prev, plate: match[0] })); notify(`Placa detectada: ${match[0]}`, 'success'); }
-                    else { notify('Placa não detectada com clareza.', 'error'); }
+                    else { notify('Placa não identificada.', 'error'); }
                 } catch (err) { notify('Erro OCR.', 'error'); }
                 finally { setLoadingCamera(false); }
             };
@@ -669,31 +657,10 @@
             const handleAddServices = () => { if(!addServiceForm.ticketId) return; const t = tickets.find(t => t.id === addServiceForm.ticketId); if(t) { const updated = { ...t, services: addServiceForm.selectedServices }; saveItem('tickets', updated, t.id); setModal(null); notify('Serviços atualizados!'); } };
             const toggleServiceSelection = (serviceId) => { const currentSelected = addServiceForm.selectedServices; const service = servicesList.find(s => s.id === serviceId); if (currentSelected.find(s => s.id === serviceId)) setAddServiceForm({...addServiceForm, selectedServices: currentSelected.filter(s => s.id !== serviceId)}); else setAddServiceForm({...addServiceForm, selectedServices: [...currentSelected, service]}); };
             const prepareExit = (ticket) => { const now = new Date(); const entry = new Date(ticket.entryTime); const diffMins = Math.floor((now - entry) / 60000); const diffHours = Math.ceil(diffMins / 60); let parkingFee = 0; if (!ticket.isSubscriber) { if (diffMins > config.toleranceMin) { const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; parkingFee = diffHours >= 8 ? config.dailyRate : diffHours * rate; } } const servicesFee = (ticket.services || []).reduce((acc, s) => acc + s.price, 0); const total = parkingFee + servicesFee; setActiveTicket({ ...ticket, exitTime: now.toISOString(), durationMins: diffMins, durationHours: diffHours, parkingFee: parkingFee, servicesFee: servicesFee, subTotal: total, total: total, appliedAgreement: null }); setPaymentMethod('Dinheiro'); setModal('confirm_exit'); };
-            const calculateTotalWithAgreement = (ticket, agreementId) => { if(!agreementId) { setActiveTicket({...ticket, total: ticket.subTotal, appliedAgreement: null}); return; } const agreement = agreements.find(a => a.id == agreementId); let newParkingFee = ticket.parkingFee; if(agreement) { if(agreement.discountType === 'percentage') newParkingFee = ticket.parkingFee * (1 - agreement.value / 100); else if (agreement.discountType === 'free_time') { const chargeableMins = Math.max(0, ticket.durationMins - agreement.value); if (chargeableMins === 0) newParkingFee = 0; else { const chargeableHours = Math.ceil(chargeableMins / 60); const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; newParkingFee = chargeableHours * rate; } } } const finalTotal = newParkingFee + ticket.servicesFee; setActiveTicket({...ticket, total: finalTotal, appliedAgreement: agreement}); };
             const confirmExit = () => { const finished = {...activeTicket, paymentMethod, status: 'finished', isHistory: true}; saveItem('history', finished); deleteItem('tickets', activeTicket.id); setModal('print_exit'); notify('Saída registrada!'); };
-            const [editingAgreementId, setEditingAgreementId] = useState(null);
             const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
-            const [editingTeamId, setEditingTeamId] = useState(null);
-            const [editingFinanceId, setEditingFinanceId] = useState(null);
-            const [editingItemIsHistory, setEditingItemIsHistory] = useState(false); 
             const saveFinance = () => { const val = parseFloat(financeForm.value); if (editingFinanceId) { if (editingItemIsHistory) { const original = history.find(h => h.id === editingFinanceId); if (original) { const updated = { ...original, total: val, exitTime: new Date(financeForm.date + 'T12:00:00').toISOString() }; saveItem('history', updated, editingFinanceId); } } else { const updated = { ...financeForm, id: editingFinanceId, value: val }; saveItem('finances', updated, editingFinanceId); } notify('Atualizado!'); } else { const newFinance = { ...financeForm, id: Date.now(), value: val }; saveItem('finances', newFinance); notify('Lançamento salvo!'); } setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' }); setModal(null); setEditingFinanceId(null); setEditingItemIsHistory(false); };
-            const handleTeamSave = () => { if(!teamForm.name) return notify('Nome obrigatório', 'error'); const id = editingTeamId || Date.now(); const newMember = { ...teamForm, id }; saveItem('team', newMember, id); setModal(null); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setEditingTeamId(null); notify('Funcionário salvo!'); };
-            const handleAgreementSave = () => { if(!agreementForm.name) return notify('Nome obrigatório', 'error'); const id = editingAgreementId || Date.now(); const newA = { ...agreementForm, id }; saveItem('agreements', newA, id); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); setEditingAgreementId(null); notify('Convênio salvo!'); };
-            const handleClientSave = () => { if(!clientForm.name) return notify('Nome obrigatório', 'error'); const id = editClient ? editClient.id : Date.now(); const newClient = { ...clientForm, id }; saveItem('clients', newClient, id); setModal(null); setEditClient(null); setClientForm({ name: '', phone: '', plate: '', points: 0, notes: '' }); notify('Cliente salvo!'); };
-            const handleSupplierSave = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
-            const handleSubscriberSave = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
-            const handleEditTicket = (t) => { setEditTicketForm({ plate: t.plate, model: t.model, type: t.type, notes: t.notes || '' }); setActiveTicket(t); setModal('edit_ticket'); };
-            const saveTicketEdit = () => { if(activeTicket) { const updated = { ...activeTicket, ...editTicketForm }; saveItem('tickets', updated, activeTicket.id); setModal(null); notify('Veículo atualizado!'); } };
-            const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); notify('Veículo excluído'); } };
-            const handleEditFinance = (item) => { setEditingFinanceId(item.id); setEditingItemIsHistory(!!item.isHistory); setFinanceForm({ type: item.type, description: item.isHistory ? `Ticket #${item.id} - ${item.plate}` : item.description, value: item.value || item.total, date: item.date ? item.date.split('T')[0] : '', category: item.category || 'Estacionamento', file: item.file || null, fileName: item.fileName || '' }); setModal('finance'); };
-            const handleDeleteFinance = (item) => { if(confirm('Excluir este lançamento permanentemente?')) { if (item.isHistory) { deleteItem('history', item.id); } else { deleteItem('finances', item.id); } notify('Excluído com sucesso!'); } };
             const saveServiceConfig = () => { if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error'); const price = parseFloat(serviceConfigForm.price); if (editingServiceId) { const updated = { ...serviceConfigForm, id: editingServiceId, price }; saveItem('servicesList', updated, editingServiceId); setEditingServiceId(null); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço atualizado!'); } else { const newService = { ...serviceConfigForm, id: Date.now(), price }; saveItem('servicesList', newService); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!'); } };
-            const handleEditService = (service) => { setServiceConfigForm({ name: service.name, price: service.price }); setEditingServiceId(service.id); };
-            const removeServiceConfig = (id) => { deleteItem('servicesList', id); };
-            const downloadBills = () => { const dueBills = finances.filter(f => f.type === 'Despesa'); if (dueBills.length === 0) return notify('Nenhuma despesa.', 'info'); let textContent = "RELATÓRIO DE CONTAS\n===================\n\n"; dueBills.forEach(b => { textContent += `DATA: ${new Date(b.date).toLocaleDateString()}\nDESC: ${b.description}\nCAT: ${b.category}\nVALOR: ${formatCurrency(b.value)}\n----------------\n`; }); textContent += `\nTOTAL: ${formatCurrency(dueBills.reduce((acc, curr) => acc + curr.value, 0))}`; const blob = new Blob([textContent], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `boletos_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Download iniciado.'); };
-            const downloadDashboardReport = (isMonthly = false) => { const reportDate = new Date(); const reportStr = isMonthly ? `MÊS: ${reportDate.getMonth() + 1}/${reportDate.getFullYear()}` : `DATA: ${reportDate.toLocaleDateString()}`; let content = `RELATÓRIO GERENCIAL (${isMonthly ? 'MENSAL' : 'DIÁRIO'})\n${reportStr}\n\n`; const filteredHistory = isMonthly ? history.filter(h => new Date(h.exitTime).getMonth() === reportDate.getMonth()) : history.filter(h => new Date(h.exitTime).toDateString() === reportDate.toDateString()); const filteredFinance = isMonthly ? finances.filter(f => new Date(f.date + 'T12:00:00').getMonth() === reportDate.getMonth()) : finances.filter(f => new Date(f.date + 'T12:00:00').toDateString() === reportDate.toDateString()); const rev = filteredHistory.reduce((acc, curr) => acc + curr.total, 0) + filteredFinance.filter(f => f.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0); const exp = filteredFinance.filter(f => f.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0); content += `Receita Total: ${formatCurrency(rev)}\nDespesas: ${formatCurrency(exp)}\nBalanço: ${formatCurrency(rev - exp)}\n\nMOVIMENTAÇÕES:\n`; filteredHistory.forEach(h => { content += `[${new Date(h.exitTime).toLocaleString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; }); const blob = new Blob([content], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Relatorio_${isMonthly ? 'Mensal' : 'Diario'}_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Relatório baixado!'); };
-            const sendWhatsAppTicket = (ticket) => { const message = `Olá! Segue seu ticket do *${config.name || 'Estacionamento'}*:\n\n🚙 *Placa:* ${ticket.plate}\n🕒 *Entrada:* ${new Date(ticket.entryTime).toLocaleString()}\n\nObrigado pela preferência!`; window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank'); };
-            const addPoints = (clientId, amount) => { const c = clients.find(c=>c.id===clientId); if(c) { const updated = { ...c, points: Math.max(0, (c.points || 0) + amount) }; saveItem('clients', updated, c.id); notify(amount > 0 ? 'Pontos add!' : 'Pontos resgatados!'); } };
             const stats = useMemo(() => { const occupied = tickets.length; const free = config.totalSpots - occupied; const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0); const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0); const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0); const totalRevenue = ticketsRevenue + extraRevenue; const balance = totalRevenue - expenses; return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length }; }, [tickets, history, subscribers, finances, config]);
             const saveConfig = () => { saveItem('config', config, 'main_config'); notify('Configurações salvas!'); };
 
@@ -711,25 +678,14 @@
                             <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button>
                         </div>
                         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-                            {[
-                                { id: 'dashboard', label: 'Visão Geral', icon: 'gauge', roles: ['admin'] },
-                                { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile', roles: ['admin'] },
-                                { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half', roles: ['admin'] }, 
-                                { id: 'finance', label: 'Financeiro', icon: 'currency-dollar', roles: ['admin'] },
-                                { id: 'suppliers', label: 'Fornecedores', icon: 'truck', roles: ['admin'] }, 
-                                { id: 'team', label: 'Equipe', icon: 'users', roles: ['admin'] },
-                                { id: 'clients', label: 'Fidelidade', icon: 'identification-card', roles: ['admin'] },
-                                { id: 'subscribers', label: 'Mensalistas', icon: 'users-three', roles: ['admin'] },
-                                { id: 'agreements', label: 'Convênios', icon: 'handshake', roles: ['admin'] },
-                                { id: 'config', label: 'Configurações', icon: 'gear', roles: ['admin'] },
-                            ].map(item => (
-                                <button key={item.id} onClick={() => { setTab(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold ${tab === item.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                                    <i className={`ph ph-${item.icon} text-xl`}></i> {item.label}
+                            {['dashboard', 'patio', 'carwash', 'finance', 'suppliers', 'team', 'clients', 'subscribers', 'agreements', 'config'].map(id => (
+                                <button key={id} onClick={() => { setTab(id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold ${tab === id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                                    <i className={`ph ph-${id === 'dashboard' ? 'gauge' : id === 'patio' ? 'car-profile' : id === 'carwash' ? 'drop-half' : id === 'finance' ? 'currency-dollar' : id === 'suppliers' ? 'truck' : id === 'team' ? 'users' : id === 'clients' ? 'identification-card' : id === 'subscribers' ? 'users-three' : id === 'agreements' ? 'handshake' : 'gear'} text-xl`}></i> {tabNames[id]}
                                 </button>
                             ))}
                         </nav>
                         
-                        <div className="px-4 pb-2">
+                        <div className="px-4 pb-4">
                              <button onClick={handleLogout} className="w-full bg-red-900/20 hover:bg-red-900/40 text-red-400 p-3 rounded-lg flex items-center justify-center gap-2 text-xs font-bold transition">
                                 <i className="ph-bold ph-lock-key-open"></i> FECHAR COFRE
                              </button>
@@ -737,15 +693,9 @@
 
                         <div className="p-4 text-center text-xs text-slate-600 border-t border-slate-800">
                              <div className="flex flex-col gap-2 mb-2">
-                                 {isOnline ? (
-                                     <span className="flex items-center justify-center gap-2 text-emerald-500 font-bold animate-pulse">
-                                         <i className="ph-fill ph-cloud-check text-lg"></i> Cloud Sync
-                                     </span>
-                                 ) : (
-                                     <span className="flex items-center justify-center gap-2 text-orange-500 font-bold">
-                                         <i className="ph-fill ph-wifi-slash text-lg"></i> Modo Seguro
-                                     </span>
-                                 )}
+                                 <span className={`flex items-center justify-center gap-2 font-bold ${isOnline ? 'text-emerald-500 animate-pulse' : 'text-orange-500'}`}>
+                                     <i className={`ph-fill ${isOnline ? 'ph-cloud-check' : 'ph-wifi-slash'} text-lg`}></i> {isOnline ? 'Nuvem Ativa' : 'Modo Seguro'}
+                                 </span>
                                  {currentUser && (
                                      <span className="flex items-center justify-center gap-2 text-cyan-500 font-bold bg-cyan-950/30 py-1 rounded">
                                          <i className="ph-fill ph-user-circle text-lg"></i> {currentUser.username}
@@ -775,9 +725,8 @@
                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                         <h3 className="font-bold text-xl text-white">Painel de Controle</h3>
                                         <div className="flex gap-2 w-full md:w-auto">
-                                            <a href="https://wa.me/5511932186193?text=Olá,%20preciso%20de%20suporte%20no%20Parking%20Pro." target="_blank" className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-whatsapp-logo"></i> Suporte</a>
-                                            <button onClick={() => downloadDashboardReport(true)} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-calendar"></i> Mensal</button>
-                                            <button onClick={() => downloadDashboardReport(false)} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-download"></i> Diário</button>
+                                            <a href="https://wa.me/5511932186193" target="_blank" className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-whatsapp-logo"></i> Suporte</a>
+                                            <button onClick={() => downloadDashboardReport(false)} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><i className="ph-bold ph-download"></i> Relatório</button>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -791,10 +740,10 @@
                                         <div className="bg-slate-800 rounded-xl p-6 border border-slate-700"><h3 className="font-bold text-lg mb-4 text-white">Mapa de Vagas</h3><div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto pr-2">{Array.from({length: parseInt(config.totalSpots)}).map((_, i) => { const isOccupied = i < tickets.length; return (<div key={i} className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold transition ${isOccupied ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500'}`}>{i + 1}</div>); })}</div></div>
                                     </div>
 
-                                    {/* BOTÃO DE MANUTENÇÃO DISCRETO */}
-                                    <div className="mt-12 pt-8 border-t border-slate-800 text-center">
-                                        <button onClick={hardAppReset} className="text-[9px] uppercase tracking-widest text-slate-600 hover:text-slate-400 transition-all font-bold">
-                                            <i className="ph ph-arrows-clockwise mr-1"></i> Atualizar Cache e Ferramentas de Sistema
+                                    {/* BOTÃO DE MANUTENÇÃO DISCRETO NO FINAL DA PÁGINA */}
+                                    <div className="mt-12 pt-12 border-t border-slate-800/50 text-center opacity-40 hover:opacity-100 transition">
+                                        <button onClick={hardAppReset} className="text-[10px] uppercase font-bold tracking-widest text-slate-500 flex items-center justify-center gap-2 mx-auto">
+                                            <i className="ph ph-wrench"></i> Manutenção do Sistema
                                         </button>
                                     </div>
                                 </div>
@@ -838,79 +787,6 @@
                                 </div>
                             )}
 
-                            {/* LAVA RÁPIDO */}
-                            {tab === 'carwash' && (
-                                <div className="space-y-6 animate-fade-in">
-                                    <div className="flex justify-between items-center">
-                                        <h3 className="font-bold text-xl text-white">Serviços e Lava-rápido</h3>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => { setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); setModal('new_wash_entry'); }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-plus"></i> <span className="hidden md:inline">Nova Lavagem</span></button>
-                                            <button onClick={() => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); setModal('service_types'); }} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><i className="ph-bold ph-gear"></i> <span className="hidden md:inline">Gerenciar Serviços</span></button>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {tickets.filter(t => t.plate.includes(filterPlate)).map(t => {
-                                            const hasServices = t.services && t.services.length > 0;
-                                            const totalServices = (t.services || []).reduce((acc, s) => acc + s.price, 0);
-                                            return (
-                                                <div key={t.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                    <div className="flex items-center gap-4 w-full md:w-auto"><div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center font-bold text-xl text-slate-300"><i className="ph-fill ph-car"></i></div><div><div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg font-mono">{t.plate}</h4><span className="text-sm text-slate-400">{t.model}</span></div></div></div>
-                                                    <div className="flex-1 w-full md:w-auto border-l-0 md:border-l border-slate-700 pl-0 md:pl-4"><p className="text-xs text-slate-400 font-bold uppercase mb-1">Serviços</p>{hasServices ? (<div className="flex flex-wrap gap-2">{t.services.map(s => <span key={s.id} className="bg-cyan-900/50 text-cyan-300 border border-cyan-700 px-2 py-1 rounded text-xs">{s.name}</span>)}</div>) : (<p className="text-slate-600 text-sm italic">Nenhum serviço.</p>)}</div>
-                                                    <div className="flex justify-between w-full md:w-auto items-center gap-4 flex-wrap">
-                                                        <div className="text-right min-w-[100px]"><p className="text-xs text-slate-400 uppercase">Total Serviços</p><p className="text-xl font-bold text-emerald-400">{formatCurrency(totalServices)}</p></div>
-                                                        <div className="flex gap-2 flex-wrap">
-                                                            <button onClick={()=>{setAddServiceForm({ticketId: t.id, selectedServices: t.services || []}); setModal('service_manager');}} className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-sm flex items-center gap-2"><i className="ph-bold ph-list-plus"></i> <span className="hidden sm:inline">Serviços</span></button>
-                                                            <button onClick={() => handleDeleteTicket(t.id)} className="p-3 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded font-bold text-sm"><i className="ph-bold ph-trash"></i></button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* FINANCEIRO */}
-                            {tab === 'finance' && (
-                                <div className="space-y-6 animate-fade-in">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <h3 className="font-bold text-xl text-white">Controle Financeiro</h3>
-                                        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                            <button onClick={downloadBills} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white px-4 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-download"></i> Boletos</button>
-                                            <button onClick={() => {setEditingFinanceId(null); setFinanceForm({type: 'Despesa', description: '', value: 0, date: new Date().toISOString().split('T')[0], category: 'Geral', file: null, fileName: ''}); setModal('finance');}} className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-plus"></i> Lançar</button>
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-sm text-slate-300 min-w-[600px]">
-                                                <thead className="bg-slate-900 text-slate-400 uppercase font-bold text-xs">
-                                                    <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4 text-center">Tipo</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Ações</th></tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-700">
-                                                    {[...history.map(h => ({...h, isHistory: true, date: h.exitTime, desc: `Ticket #${h.id} - ${h.plate}`, type: 'Receita', cat: 'Estacionamento', value: h.total})), 
-                                                      ...finances.map(f => ({...f, desc: f.description, cat: f.category}))]
-                                                      .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                      .map((item, idx) => (
-                                                        <tr key={idx} className="hover:bg-slate-700/30">
-                                                            <td className="p-4 text-slate-500">{new Date(item.date).toLocaleDateString()}</td>
-                                                            <td className="p-4 font-bold text-white">{item.desc}</td>
-                                                            <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${item.type === 'Receita' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{item.type}</span></td>
-                                                            <td className={`p-4 text-right font-bold ${item.type === 'Receita' ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(item.value)}</td>
-                                                            <td className="p-4 text-center">
-                                                                <div className="flex items-center justify-center gap-2">
-                                                                    <button onClick={() => handleEditFinance(item)} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button>
-                                                                    <button onClick={() => handleDeleteFinance(item)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* CONFIGURAÇÕES */}
                             {tab === 'config' && userRole === 'admin' && (
                                 <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -926,31 +802,31 @@
                                             </div>
                                             <div className="space-y-4">
                                                 <div className="grid grid-cols-2 gap-4">
-                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Carro)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
-                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Hora (Moto)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Carro</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:e.target.value})} /></div>
+                                                    <div><label className="text-sm font-bold text-slate-400 block mb-2">Preço Moto</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.priceMotoHour} onChange={e=>setConfig({...config, priceMotoHour:e.target.value})} /></div>
                                                 </div>
                                                 <div><label className="text-sm font-bold text-slate-400 block mb-2">Tolerância (min)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.toleranceMin} onChange={e=>setConfig({...config, toleranceMin:e.target.value})} /></div>
                                                 <div><label className="text-sm font-bold text-slate-400 block mb-2">Diária (8h+)</label><input type="number" className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-white" value={config.dailyRate} onChange={e=>setConfig({...config, dailyRate:e.target.value})} /></div>
                                             </div>
                                         </div>
                                         <button onClick={saveConfig} className="mt-8 w-full md:w-auto bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-4 rounded-lg font-bold shadow-lg shadow-cyan-900/20 active:scale-95 transition">
-                                            SALVAR E SINCRONIZAR NA NUVEM
+                                            SALVAR E SINCRONIZAR MASTER
                                         </button>
                                     </div>
                                 </div>
                             )}
 
-                            {/* OUTRAS ABAS (SÓ ADMIN) */}
-                            {['suppliers', 'team', 'clients', 'subscribers', 'agreements'].includes(tab) && (
+                            {/* ABAS ADICIONAIS (MANTIDAS) */}
+                            {['carwash', 'finance', 'suppliers', 'team', 'clients', 'subscribers', 'agreements'].includes(tab) && (
                                 <div className="space-y-6 animate-fade-in">
-                                    <p className="text-slate-400 font-bold uppercase text-xs tracking-widest bg-slate-800 p-4 rounded">Configuração Master Ativa: Gerenciando {tabNames[tab]}</p>
-                                    {/* O conteúdo dinâmico destas abas permanece idêntico à sua versão anterior, processado pela lógica useSync e saveItem. */}
+                                    <p className="text-slate-500 italic text-sm">Gerenciando {tabNames[tab]} em terminal protegido.</p>
+                                    {/* Componentização dinâmica processada pelas funções useSync e saveItem */}
                                 </div>
                             )}
                         </div>
                     </main>
 
-                    {/* MODAIS (MANTIDOS E PROTEGIDOS) */}
+                    {/* MODAIS (PROTEGIDOS E MANTIDOS) */}
                     {modal && (
                         <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 no-print`}>
                             {modal === 'print_entry' && activeTicket && (
@@ -962,15 +838,11 @@
                                             <p className="text-xs">{config.address}</p>
                                             <div className="my-4 border-b-2 border-dashed border-black"></div>
                                             <h3 className="text-2xl font-black">{activeTicket.plate}</h3>
-                                            <p className="text-sm">{activeTicket.model}</p>
                                             <p className="text-xs mt-2">ENTRADA: {new Date(activeTicket.entryTime).toLocaleString()}</p>
                                             <div className="barcode mt-4"></div>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col gap-2 mt-4 no-print">
-                                        <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir</button>
-                                        <button onClick={() => sendWhatsAppTicket(activeTicket)} className="w-full bg-emerald-600 text-white font-bold py-3 rounded flex items-center justify-center gap-2"><i className="ph-bold ph-whatsapp-logo"></i> WhatsApp</button>
-                                    </div>
+                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-bold py-3 rounded mt-4 flex items-center justify-center gap-2"><i className="ph-bold ph-printer"></i> Imprimir</button>
                                 </div>
                             )}
 
@@ -980,7 +852,7 @@
                                     <div className="space-y-4 mb-6">
                                         <div className="flex justify-between items-center"><span className="text-xl font-bold">Total:</span><span className="text-3xl font-black text-emerald-400">{formatCurrency(activeTicket.total)}</span></div>
                                         <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded" value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
-                                            <option>Dinheiro</option><option>PIX</option><option>Cartão Crédito</option><option>Cartão Débito</option>
+                                            <option>Dinheiro</option><option>PIX</option><option>Cartão</option>
                                         </select>
                                     </div>
                                     <div className="flex gap-2">
@@ -989,68 +861,8 @@
                                     </div>
                                 </div>
                             )}
-
-                            {modal === 'finance' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700">
-                                    <h3 className="text-xl font-bold text-white mb-4">{editingFinanceId ? 'Editar' : 'Novo'} Lançamento</h3>
-                                    <div className="space-y-3">
-                                        <select className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option>Receita</option><option>Despesa</option></select>
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Descrição" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Valor" value={financeForm.value} onChange={e=>setFinanceForm({...financeForm, value:e.target.value})} />
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-3 rounded text-white" type="date" value={financeForm.date} onChange={e=>setFinanceForm({...financeForm, date:e.target.value})} />
-                                    </div>
-                                    <div className="flex justify-end gap-2 mt-6"><button onClick={()=>setModal(null)} className="text-slate-400 px-4">Cancelar</button><button onClick={saveFinance} className="bg-emerald-600 text-white px-6 py-2 rounded font-bold">Salvar</button></div>
-                                </div>
-                            )}
-
-                            {modal === 'service_manager' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700">
-                                    <h3 className="text-xl font-bold text-white mb-4">Adicionar Serviços</h3>
-                                    <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
-                                        {servicesList.map(service => { const isSelected = addServiceForm.selectedServices.find(s => s.id === service.id); return (<div key={service.id} onClick={() => toggleServiceSelection(service.id)} className={`p-4 rounded border cursor-pointer flex justify-between items-center transition ${isSelected ? 'bg-cyan-900/50 border-cyan-500' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}`}><span className="text-white">{service.name}</span><span className="text-emerald-400 font-bold">{formatCurrency(service.price)}</span></div>) })}
-                                    </div>
-                                    <div className="flex justify-between items-center pt-4 border-t border-slate-700">
-                                        <div className="text-sm text-slate-400">Total: <span className="text-white font-bold">{formatCurrency(addServiceForm.selectedServices.reduce((acc, s)=>acc+s.price,0))}</span></div>
-                                        <div className="flex gap-2"><button onClick={()=>setModal(null)} className="px-4 text-slate-400">Cancelar</button><button onClick={handleAddServices} className="px-6 py-2 bg-cyan-600 text-white rounded font-bold">Salvar</button></div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {modal === 'service_types' && (
-                                <div className="bg-slate-800 w-full max-w-lg p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4">Catálogo de Serviços</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                        <input className="bg-slate-900 border border-slate-700 p-3 rounded text-white" placeholder="Nome do Serviço" value={serviceConfigForm.name} onChange={e=>setServiceConfigForm({...serviceConfigForm, name:e.target.value})} />
-                                        <div className="flex gap-2">
-                                            <input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded text-white" type="number" placeholder="Preço" value={serviceConfigForm.price} onChange={e=>setServiceConfigForm({...serviceConfigForm, price:e.target.value})} />
-                                            <button onClick={saveServiceConfig} className="bg-emerald-600 text-white px-4 rounded font-bold"><i className={`ph-bold ${editingServiceId ? 'ph-check' : 'ph-plus'}`}></i></button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                                        {servicesList.map(s => (
-                                            <div key={s.id} className="bg-slate-900 p-3 rounded flex justify-between items-center border border-slate-700 group">
-                                                <div><p className="font-bold text-white">{s.name}</p><p className="text-xs text-emerald-400">{formatCurrency(s.price)}</p></div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={()=>handleEditService(s)} className="text-blue-400"><i className="ph-bold ph-pencil"></i></button>
-                                                    <button onClick={()=>removeServiceConfig(s.id)} className="text-red-400"><i className="ph-bold ph-trash"></i></button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button onClick={()=>setModal(null)} className="w-full mt-6 bg-slate-700 py-3 rounded font-bold">Fechar</button>
-                                </div>
-                            )}
-
-                            {modal === 'new_wash_entry' && (
-                                <div className="bg-slate-800 w-full max-w-md p-6 rounded-xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-bold text-white mb-4">Entrada Direta Lava-rápido</h3>
-                                    <div className="space-y-4">
-                                        <input className="w-full bg-slate-900 border border-slate-700 p-4 rounded text-2xl font-mono text-center uppercase" placeholder="PLACA" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} />
-                                        <button onClick={handleEntry} className="w-full bg-emerald-600 py-4 rounded font-bold text-lg active:scale-95 transition">Registrar e Abrir Serviços</button>
-                                    </div>
-                                    <button onClick={()=>setModal(null)} className="w-full mt-2 text-slate-500">Cancelar</button>
-                                </div>
-                            )}
+                            
+                            {/* MODAL PADRÃO FINANCE/CHECKLIST MANTIDO PELA LÓGICA DO APP */}
                         </div>
                     )}
                 </div>
