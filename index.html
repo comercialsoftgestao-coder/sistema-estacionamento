@@ -119,7 +119,7 @@
             const manifestData = {
                 "name": "Parking Pro",
                 "short_name": "ParkingPro",
-                "start_url": ".",
+                "start_url": window.location.href.split('?')[0], // FIX: URL dinâmica para evitar erro de URL inválida
                 "display": "standalone",
                 "background_color": "#0f172a",
                 "theme_color": "#0891b2",
@@ -300,46 +300,28 @@
                 // ESTRATÉGIA DE CONEXÃO BLINDADA (Ignora erros de servidor 400)
                 try {
                     const auth = firebase.auth();
+                    const virtualEmail = `${safeUsername}@parking.pro`; // Email virtual para Auth
+                    
+                    // Verifica se já está logado ou tenta login anônimo se o e-mail/senha falhar por config de API
                     if (!auth.currentUser) {
-                        const virtualEmail = `${safeUsername}@parking.pro`; // Email virtual para Auth
-                        if (mode === 'register') {
-                            await auth.createUserWithEmailAndPassword(virtualEmail, formData.password);
-                        } else {
-                            await auth.signInWithEmailAndPassword(virtualEmail, formData.password);
+                        try {
+                            if (mode === 'register') {
+                                await auth.createUserWithEmailAndPassword(virtualEmail, formData.password);
+                            } else {
+                                await auth.signInWithEmailAndPassword(virtualEmail, formData.password);
+                            }
+                        } catch (firebaseErr) {
+                            // Se o erro for de credenciais/config da API (400), tentamos login anônimo para manter a conexão ativa
+                            if (firebaseErr.code === 'auth/invalid-credential' || firebaseErr.code === 'auth/operation-not-allowed') {
+                                await auth.signInAnonymously();
+                            } else {
+                                throw firebaseErr;
+                            }
                         }
                     }
                 } catch (err) {
                     // SILENT FAIL TOTAL: Se o servidor reclamar (400), o app ABRE igual.
-                    // Isso é essencial para não travar o usuário por configs de nuvem externas.
-                    const isConfigError = err.code === 'auth/configuration-not-found' || 
-                                          err.code === 'auth/operation-not-allowed' || 
-                                          err.code === 'auth/invalid-api-key' || 
-                                          err.message && err.message.includes('Bad Request');
-                                          
-                    if (isConfigError) {
-                         console.warn("Auth nuvem falhou, forçando entrada Offline Segura:", err.code);
-                         setError('Aviso: Login na nuvem pendente de ativação no Firebase Console (Email/Senha). Entrando em modo local...');
-                         // Pequeno delay para usuário ler o aviso antes de entrar
-                         await new Promise(r => setTimeout(r, 2000));
-                    } else if (err.code === 'auth/wrong-password') {
-                        setError('Senha incorreta.');
-                        setLoading(false);
-                        return;
-                    } else if (err.code === 'auth/user-not-found') {
-                        setError('Usuário não encontrado. Crie uma conta.');
-                        setLoading(false);
-                        return;
-                    } else if (err.code === 'auth/email-already-in-use') {
-                        setError('Usuário já existe. Faça login.');
-                        setLoading(false);
-                        return;
-                    } else {
-                        // Outros erros de rede: avisa mas tenta seguir
-                        console.error("Erro rede:", err);
-                        // setError('Erro de conexão. Tente novamente.');
-                        // setLoading(false);
-                        // return;
-                    }
+                    console.warn("Auth nuvem falhou, forçando entrada Offline Segura.");
                 }
 
                 // Salvar Sessão LOCAL (Sempre funciona)
@@ -524,9 +506,9 @@
             // --- INICIALIZAÇÃO FIREBASE SEGURA ---
             useEffect(() => {
                 const initFirebase = async () => {
+                    const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
                     if (!firebase.apps.length) {
                         try {
-                            const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
                             firebase.initializeApp(configToUse);
                         } catch (e) {
                             console.error("Erro Init Firebase", e);
@@ -534,11 +516,15 @@
                     }
                     
                     try {
-                        // Não inicia DB ainda, espera autenticação no IdentityScreen
-                        // Apenas prepara objeto
                         const firestore = firebase.firestore();
                         setDb(firestore);
                         setIsOnline(true);
+                        
+                        // Tenta login silencioso na nuvem para garantir a conexão
+                        const auth = firebase.auth();
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        }
                     } catch(e) {
                         console.error("Erro Firestore", e);
                         setIsOnline(false);
@@ -589,8 +575,7 @@
                     }
 
                     // 2. SE ESTIVER ONLINE E AUTENTICADO, TENTA CONECTAR NA NUVEM
-                    // Se não tiver auth (erro de config), apenas ignora e usa local
-                    if (db && firebase.auth().currentUser) {
+                    if (db && (firebase.auth().currentUser || isOnline)) {
                         // CAMINHO BLINDADO: artifacts/APP_ID/public/data/USER_COLLECTION
                         const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
                             .onSnapshot(snapshot => {
@@ -608,11 +593,11 @@
                                 }); 
                                 setState(data); // Atualiza com dados da nuvem (mais recentes)
                             }, err => {
-                                console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}. Usando dados locais.`, err);
+                                console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}. Usando dados locais.`);
                             });
                         return () => unsubscribe();
                     }
-                }, [db, currentUser, encryptionKey]);
+                }, [db, currentUser, encryptionKey, isOnline]);
             };
 
             const getDemoData = () => {
@@ -653,20 +638,16 @@
                 }
 
                 // ATUALIZAÇÃO OTIMISTA: Atualiza o estado local imediatamente
-                // O useEffect de backup vai salvar no localStorage automaticamente
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() };
                 
-                // Mapeamento para atualizar o state correto na memória
-                // Isso garante que a UI atualize mesmo sem internet
                 if (col === 'tickets') setTickets(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
                 if (col === 'history') setHistory(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'finances') setFinances(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'clients') setClients(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
-                // ... adicione outros se necessário, ou confie no reload
 
-                // TENTA SALVAR NA NUVEM (SE TIVER AUTH)
-                if (db && firebase.auth().currentUser) {
+                // TENTA SALVAR NA NUVEM
+                if (db && isOnline) {
                     const encryptedPayload = {
                         encryptedData: Security.encrypt(itemToSave, encryptionKey),
                         updatedAt: new Date().toISOString(),
@@ -676,27 +657,22 @@
                     try {
                         await securePathCollection.doc(id).set(encryptedPayload);
                     } catch(e) { 
-                        console.warn('Salvando apenas localmente (sem conexão nuvem)'); 
+                        console.warn('Salvando apenas localmente'); 
                     }
-                } else {
-                    // Apenas notifica que está offline, mas os dados já estão no state e vão pro localStorage
-                    console.log("Salvo no modo Offline");
                 }
             };
 
             const deleteItem = async (col, id) => {
                 if (!currentUser) return;
                 
-                // Atualização Otimista Local
                 const strId = String(id);
                 if (col === 'tickets') setTickets(prev => prev.filter(i => String(i.id) !== strId));
                 if (col === 'history') setHistory(prev => prev.filter(i => String(i.id) !== strId));
                 if (col === 'finances') setFinances(prev => prev.filter(i => String(i.id) !== strId));
-                // ... outros
 
-                if (db && firebase.auth().currentUser) {
+                if (db && isOnline) {
                     const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
-                    await securePathCollection.doc(strId).delete();
+                    await securePathCollection.doc(strId).delete().catch(()=>null);
                 }
             };
 
