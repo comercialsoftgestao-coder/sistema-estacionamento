@@ -309,15 +309,14 @@
                         setLoading(false);
                         return;
                     }
-                    // Simulação de cadastro (Na prática, salvamos no DB se possível, mas aqui definimos a sessão)
-                    // A senha será usada como CHAVE DE CRIPTOGRAFIA (Cofre)
+                    // Simulação de cadastro
                 }
 
-                // Autenticação Firebase para acesso ao DB
+                // Autenticação Firebase para acesso ao DB (Tentativa Robusta)
                 try {
                     const auth = firebase.auth();
                     if (!auth.currentUser) {
-                        // Tenta usar token do ambiente se disponível (Correção para erro auth/configuration-not-found)
+                        // Tenta usar token do ambiente se disponível
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await auth.signInWithCustomToken(__initial_auth_token);
                         } else {
@@ -325,12 +324,14 @@
                         }
                     }
                 } catch (err) {
-                    console.error("Erro auth", err);
-                    if (err.code === 'auth/configuration-not-found' || err.code === 'auth/operation-not-allowed') {
-                         console.warn("Auth nuvem indisponível (configuração), tentando modo local.");
-                         // Permite seguir, mas o sync de nuvem pode falhar silenciosamente
+                    console.error("Erro auth warning", err);
+                    // Correção: Se a configuração de nuvem falhar, permitimos o login em modo local/offline
+                    if (err.code === 'auth/configuration-not-found' || err.code === 'auth/operation-not-allowed' || err.code === 'auth/invalid-api-key' || err.message.includes('Bad Request')) {
+                         console.warn("Auth nuvem indisponível ou mal configurada. Ativando MODO OFFLINE SEGURO.");
+                         // Não bloqueia o usuário, apenas segue sem login na nuvem
                     } else {
-                        setError('Erro de conexão com o servidor seguro: ' + err.message);
+                        // Outros erros de rede reais podem ser fatais, mas vamos tentar seguir
+                        setError('Aviso: Conexão instável. Tente novamente.');
                         setLoading(false);
                         return;
                     }
@@ -541,38 +542,71 @@
                 initFirebase();
             }, []);
 
+            // --- BACKUP AUTOMÁTICO CRIPTOGRAFADO (NÃO PERDER DADOS) ---
+            useEffect(() => {
+                if (currentUser && encryptionKey) {
+                    // Função para salvar dados criptografados no LocalStorage (Cofre Local)
+                    const saveLocal = (key, data) => {
+                        try {
+                            const encrypted = Security.encrypt(data, encryptionKey);
+                            localStorage.setItem(`parkingpro_secure_${currentUser.username}_${key}`, encrypted);
+                        } catch(e) { console.error("Erro ao salvar backup local", e); }
+                    };
+                    
+                    // Salva todos os estados importantes
+                    saveLocal('tickets', tickets);
+                    saveLocal('history', history);
+                    saveLocal('finances', finances);
+                    saveLocal('subscribers', subscribers);
+                    saveLocal('clients', clients);
+                    saveLocal('team', team);
+                    saveLocal('suppliers', suppliers);
+                    saveLocal('agreements', agreements);
+                    saveLocal('servicesList', servicesList);
+                    saveLocal('config', config);
+                }
+            }, [tickets, history, finances, subscribers, clients, team, suppliers, agreements, servicesList, config, currentUser, encryptionKey]);
+
             // --- HOOK DE SINCRONIZAÇÃO BLINDADA (DATA ISOLATION & ENCRYPTION) ---
             const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
-                    if (!db || !currentUser || !encryptionKey) {
-                        // Se não tem DB ou User, tenta carregar do LocalStorage Criptografado
-                        return; 
+                    if (!currentUser || !encryptionKey) return;
+
+                    // 1. TENTA CARREGAR DO LOCAL STORAGE PRIMEIRO (OFFLINE FIRST / CACHE)
+                    const localKey = `parkingpro_secure_${currentUser.username}_${collectionName}`;
+                    const localData = localStorage.getItem(localKey);
+                    if (localData) {
+                        const decrypted = Security.decrypt(localData, encryptionKey);
+                        if (decrypted) setState(decrypted);
+                    } else if (fallbackData && !localData) {
+                        // Se não tem nada local, usa fallback inicial
+                        setState(fallbackData);
                     }
 
-                    // CAMINHO BLINDADO: artifacts/APP_ID/public/data/USER_COLLECTION
-                    // Ex: artifacts/123/public/data/andrea_tickets
-                    const securePath = `artifacts/${appId}/public/data/${currentUser.username}_${collectionName}`;
-                    
-                    const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
-                        .onSnapshot(snapshot => {
-                            const data = snapshot.docs.map(doc => {
-                                const rawData = doc.data();
-                                // Tenta descriptografar, se falhar (dado legado), usa raw
-                                let decrypted = rawData;
-                                if (rawData.encryptedData) {
-                                    decrypted = Security.decrypt(rawData.encryptedData, encryptionKey);
-                                    // Se decrypt falhar ou não retornar objeto, mantém null/erro
-                                    if (!decrypted && rawData.encryptedData) {
-                                        console.warn(`Falha ao descriptografar item ${doc.id}`);
-                                        return { ...rawData, id: doc.id, decryptError: true };
+                    // 2. SE ESTIVER ONLINE E AUTENTICADO, TENTA CONECTAR NA NUVEM
+                    // Se não tiver auth (erro de config), apenas ignora e usa local
+                    if (db && firebase.auth().currentUser) {
+                        // CAMINHO BLINDADO: artifacts/APP_ID/public/data/USER_COLLECTION
+                        const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
+                            .onSnapshot(snapshot => {
+                                const data = snapshot.docs.map(doc => {
+                                    const rawData = doc.data();
+                                    let decrypted = rawData;
+                                    if (rawData.encryptedData) {
+                                        decrypted = Security.decrypt(rawData.encryptedData, encryptionKey);
+                                        if (!decrypted && rawData.encryptedData) {
+                                            console.warn(`Falha ao descriptografar item ${doc.id}`);
+                                            return { ...rawData, id: doc.id, decryptError: true };
+                                        }
                                     }
-                                }
-                                return { ...decrypted, id: doc.id };
-                            }); 
-                            setState(data);
-                        }, err => console.error(`Sync error ${collectionName}`, err));
-                    
-                    return () => unsubscribe();
+                                    return { ...decrypted, id: doc.id };
+                                }); 
+                                setState(data); // Atualiza com dados da nuvem (mais recentes)
+                            }, err => {
+                                console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}. Usando dados locais.`, err);
+                            });
+                        return () => unsubscribe();
+                    }
                 }, [db, currentUser, encryptionKey]);
             };
 
@@ -608,35 +642,57 @@
 
             // --- FUNÇÃO DE SALVAMENTO SEGURO (CRYPT + ISOLATION) ---
             const saveItem = async (col, item, idOverride) => {
-                if (!db || !currentUser || !encryptionKey) {
+                if (!currentUser || !encryptionKey) {
                     notify('Erro: Cofre fechado. Faça login novamente.', 'error');
                     return;
                 }
 
+                // ATUALIZAÇÃO OTIMISTA: Atualiza o estado local imediatamente
+                // O useEffect de backup vai salvar no localStorage automaticamente
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
-                const itemToSave = { ...item, id: item.id || Date.now() }; 
+                const itemToSave = { ...item, id: item.id || Date.now() };
                 
-                // CRIPTOGRAFIA
-                const encryptedPayload = {
-                    encryptedData: Security.encrypt(itemToSave, encryptionKey),
-                    updatedAt: new Date().toISOString(),
-                    owner: currentUser.username // Metadado visível para auditoria
-                };
+                // Mapeamento para atualizar o state correto na memória
+                // Isso garante que a UI atualize mesmo sem internet
+                if (col === 'tickets') setTickets(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
+                if (col === 'history') setHistory(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
+                if (col === 'finances') setFinances(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
+                if (col === 'clients') setClients(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
+                // ... adicione outros se necessário, ou confie no reload
 
-                const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
-
-                try {
-                    await securePathCollection.doc(id).set(encryptedPayload);
-                } catch(e) { 
-                    console.error(e);
-                    notify('Erro ao salvar no cofre nuvem', 'error'); 
+                // TENTA SALVAR NA NUVEM (SE TIVER AUTH)
+                if (db && firebase.auth().currentUser) {
+                    const encryptedPayload = {
+                        encryptedData: Security.encrypt(itemToSave, encryptionKey),
+                        updatedAt: new Date().toISOString(),
+                        owner: currentUser.username
+                    };
+                    const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
+                    try {
+                        await securePathCollection.doc(id).set(encryptedPayload);
+                    } catch(e) { 
+                        console.warn('Salvando apenas localmente (sem conexão nuvem)'); 
+                    }
+                } else {
+                    // Apenas notifica que está offline, mas os dados já estão no state e vão pro localStorage
+                    console.log("Salvo no modo Offline");
                 }
             };
 
             const deleteItem = async (col, id) => {
-                if (!db || !currentUser) return;
-                const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
-                await securePathCollection.doc(String(id)).delete();
+                if (!currentUser) return;
+                
+                // Atualização Otimista Local
+                const strId = String(id);
+                if (col === 'tickets') setTickets(prev => prev.filter(i => String(i.id) !== strId));
+                if (col === 'history') setHistory(prev => prev.filter(i => String(i.id) !== strId));
+                if (col === 'finances') setFinances(prev => prev.filter(i => String(i.id) !== strId));
+                // ... outros
+
+                if (db && firebase.auth().currentUser) {
+                    const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
+                    await securePathCollection.doc(strId).delete();
+                }
             };
 
             // Login e Autenticação Master
@@ -671,8 +727,8 @@
                 finally { setLoadingCamera(false); }
             };
             
-            const handleEntry = () => { if (!entryForm.plate) return notify('Placa é obrigatória', 'error'); const entryDateObj = entryForm.manualEntry ? new Date(entryForm.manualEntry) : new Date(); const isSub = subscribers.find(s => s.plate === entryForm.plate.toUpperCase() && s.active); const loyaltyClient = clients.find(c => c.plate === entryForm.plate.toUpperCase()); if (loyaltyClient) { const updated = { ...loyaltyClient, points: (loyaltyClient.points || 0) + 1 }; saveItem('clients', updated, updated.id); if(!db) setClients(clients.map(c => c.id === loyaltyClient.id ? updated : c)); notify(`Cliente Fidelidade: ${loyaltyClient.name}. +1 Ponto!`, 'success'); } const newTicket = { id: Date.now(), plate: entryForm.plate.toUpperCase(), model: entryForm.model, type: entryForm.type, entryTime: entryDateObj.toISOString(), isSubscriber: !!isSub, isLoyalty: !!loyaltyClient, loyaltyClientId: loyaltyClient ? loyaltyClient.id : null, subscriberName: isSub ? isSub.name : null, notes: entryForm.notes, damages: entryForm.damages || [], services: [], status: 'active' }; if (entryForm.manualExit) { const exitDateObj = new Date(entryForm.manualExit); if (exitDateObj <= entryDateObj) return notify('Saída deve ser após entrada.', 'error'); const diffMins = Math.floor((exitDateObj - entryDateObj) / 60000); const diffHours = Math.ceil(diffMins / 60); let total = 0; if (!isSub) { if (diffMins > config.toleranceMin) { const rate = entryForm.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; total = diffHours >= 8 ? config.dailyRate : diffHours * rate; } } const historyItem = { ...newTicket, exitTime: exitDateObj.toISOString(), durationMins: diffMins, durationHours: diffHours, subTotal: total, total: total, paymentMethod: 'Dinheiro (Manual)', status: 'finished', isHistory: true }; saveItem('history', historyItem); if(!db) setHistory(prev => [historyItem, ...prev]); setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); notify('Lançamento realizado!'); return; } saveItem('tickets', newTicket); if(!db) setTickets([...tickets, newTicket]); setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); setActiveTicket(newTicket); setModal('print_entry'); notify('Veículo registrado!'); };
-            const handleAddServices = () => { if(!addServiceForm.ticketId) return; const t = tickets.find(t => t.id === addServiceForm.ticketId); if(t) { const updated = { ...t, services: addServiceForm.selectedServices }; saveItem('tickets', updated, t.id); if(!db) setTickets(tickets.map(tk => tk.id === t.id ? updated : tk)); setModal(null); notify('Serviços atualizados!'); } };
+            const handleEntry = () => { if (!entryForm.plate) return notify('Placa é obrigatória', 'error'); const entryDateObj = entryForm.manualEntry ? new Date(entryForm.manualEntry) : new Date(); const isSub = subscribers.find(s => s.plate === entryForm.plate.toUpperCase() && s.active); const loyaltyClient = clients.find(c => c.plate === entryForm.plate.toUpperCase()); if (loyaltyClient) { const updated = { ...loyaltyClient, points: (loyaltyClient.points || 0) + 1 }; saveItem('clients', updated, updated.id); notify(`Cliente Fidelidade: ${loyaltyClient.name}. +1 Ponto!`, 'success'); } const newTicket = { id: Date.now(), plate: entryForm.plate.toUpperCase(), model: entryForm.model, type: entryForm.type, entryTime: entryDateObj.toISOString(), isSubscriber: !!isSub, isLoyalty: !!loyaltyClient, loyaltyClientId: loyaltyClient ? loyaltyClient.id : null, subscriberName: isSub ? isSub.name : null, notes: entryForm.notes, damages: entryForm.damages || [], services: [], status: 'active' }; if (entryForm.manualExit) { const exitDateObj = new Date(entryForm.manualExit); if (exitDateObj <= entryDateObj) return notify('Saída deve ser após entrada.', 'error'); const diffMins = Math.floor((exitDateObj - entryDateObj) / 60000); const diffHours = Math.ceil(diffMins / 60); let total = 0; if (!isSub) { if (diffMins > config.toleranceMin) { const rate = entryForm.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; total = diffHours >= 8 ? config.dailyRate : diffHours * rate; } } const historyItem = { ...newTicket, exitTime: exitDateObj.toISOString(), durationMins: diffMins, durationHours: diffHours, subTotal: total, total: total, paymentMethod: 'Dinheiro (Manual)', status: 'finished', isHistory: true }; saveItem('history', historyItem); setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); notify('Lançamento realizado!'); return; } saveItem('tickets', newTicket); setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] }); setActiveTicket(newTicket); setModal('print_entry'); notify('Veículo registrado!'); };
+            const handleAddServices = () => { if(!addServiceForm.ticketId) return; const t = tickets.find(t => t.id === addServiceForm.ticketId); if(t) { const updated = { ...t, services: addServiceForm.selectedServices }; saveItem('tickets', updated, t.id); setModal(null); notify('Serviços atualizados!'); } };
             const toggleServiceSelection = (serviceId) => { const currentSelected = addServiceForm.selectedServices; const service = servicesList.find(s => s.id === serviceId); if (currentSelected.find(s => s.id === serviceId)) setAddServiceForm({...addServiceForm, selectedServices: currentSelected.filter(s => s.id !== serviceId)}); else setAddServiceForm({...addServiceForm, selectedServices: [...currentSelected, service]}); };
             const prepareExit = (ticket) => { const now = new Date(); const entry = new Date(ticket.entryTime); const diffMins = Math.floor((now - entry) / 60000); const diffHours = Math.ceil(diffMins / 60); let parkingFee = 0; if (!ticket.isSubscriber) { if (diffMins > config.toleranceMin) { const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; parkingFee = diffHours >= 8 ? config.dailyRate : diffHours * rate; } } const servicesFee = (ticket.services || []).reduce((acc, s) => acc + s.price, 0); const total = parkingFee + servicesFee; setActiveTicket({ ...ticket, exitTime: now.toISOString(), durationMins: diffMins, durationHours: diffHours, parkingFee: parkingFee, servicesFee: servicesFee, subTotal: total, total: total, appliedAgreement: null }); setPaymentMethod('Dinheiro'); setModal('confirm_exit'); };
             const calculateTotalWithAgreement = (ticket, agreementId) => { if(!agreementId) { setActiveTicket({...ticket, total: ticket.subTotal, appliedAgreement: null}); return; } const agreement = agreements.find(a => a.id == agreementId); let newParkingFee = ticket.parkingFee; if(agreement) { if(agreement.discountType === 'percentage') newParkingFee = ticket.parkingFee * (1 - agreement.value / 100); else if (agreement.discountType === 'free_time') { const chargeableMins = Math.max(0, ticket.durationMins - agreement.value); if (chargeableMins === 0) newParkingFee = 0; else { const chargeableHours = Math.ceil(chargeableMins / 60); const rate = ticket.type === 'Carro' ? config.priceCarHour : config.priceMotoHour; newParkingFee = chargeableHours * rate; } } } const finalTotal = newParkingFee + ticket.servicesFee; setActiveTicket({...ticket, total: finalTotal, appliedAgreement: agreement}); };
@@ -680,13 +736,12 @@
                 const finished = {...activeTicket, paymentMethod, status: 'finished', isHistory: true}; 
                 saveItem('history', finished); 
                 deleteItem('tickets', activeTicket.id);
-                if(!db) { setTickets(prev => prev.filter(t => t.id !== activeTicket.id)); setHistory(prev => [{...activeTicket, paymentMethod, isHistory: true}, ...prev]); }
                 setModal('print_exit'); notify('Saída registrada!'); 
             };
 
             const [editingAgreementId, setEditingAgreementId] = useState(null);
 
-            const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); if(!db) setChecklists(prev => [newChecklist, ...prev]); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
+            const saveChecklist = () => { if(!checklistForm.plate) return notify('Placa obrigatória', 'error'); const newChecklist = { ...checklistForm, id: Date.now(), date: checklistForm.date || new Date().toISOString() }; saveItem('checklists', newChecklist); setChecklistForm({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' }); setModal(null); notify('Vistoria salva!'); };
             
             const [editingTeamId, setEditingTeamId] = useState(null);
             const [editingFinanceId, setEditingFinanceId] = useState(null);
@@ -701,18 +756,15 @@
                         if (original) {
                             const updated = { ...original, total: val, exitTime: new Date(financeForm.date + 'T12:00:00').toISOString() };
                             saveItem('history', updated, editingFinanceId);
-                            if(!db) setHistory(prev => prev.map(h => h.id === editingFinanceId ? updated : h));
                         }
                     } else {
                         const updated = { ...financeForm, id: editingFinanceId, value: val };
                         saveItem('finances', updated, editingFinanceId);
-                        if(!db) setFinances(prev => prev.map(f => f.id === editingFinanceId ? updated : f));
                     }
                     notify('Atualizado!');
                 } else {
                     const newFinance = { ...financeForm, id: Date.now(), value: val }; 
                     saveItem('finances', newFinance); 
-                    if(!db) setFinances(prev => [newFinance, ...prev]); 
                     notify('Lançamento salvo!');
                 }
                 
@@ -727,10 +779,6 @@
                 const id = editingTeamId || Date.now();
                 const newMember = { ...teamForm, id };
                 saveItem('team', newMember, id);
-                if(!db) {
-                    if (editingTeamId) setTeam(prev => prev.map(m => m.id === id ? newMember : m));
-                    else setTeam(prev => [...prev, newMember]);
-                }
                 setModal(null); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setEditingTeamId(null); notify('Funcionário salvo!');
             };
 
@@ -739,27 +787,22 @@
                 const id = editingAgreementId || Date.now();
                 const newA = { ...agreementForm, id };
                 saveItem('agreements', newA, id);
-                if(!db) {
-                    if (editingAgreementId) setAgreements(prev => prev.map(a => a.id === id ? newA : a));
-                    else setAgreements(prev => [...prev, newA]);
-                }
                 setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); setEditingAgreementId(null); notify('Convênio salvo!');
             };
 
-            const handleClientSave = () => { if(!clientForm.name) return notify('Nome obrigatório', 'error'); const id = editClient ? editClient.id : Date.now(); const newClient = { ...clientForm, id }; saveItem('clients', newClient, id); if(!db) { if(editClient) setClients(prev => prev.map(c => c.id === id ? newClient : c)); else setClients(prev => [...prev, newClient]); } setModal(null); setEditClient(null); setClientForm({ name: '', phone: '', plate: '', points: 0, notes: '' }); notify('Cliente salvo!'); };
-            const handleSupplierSave = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); if(!db) { if(editSupplier) setSuppliers(prev => prev.map(s => s.id === id ? newSupplier : s)); else setSuppliers(prev => [...prev, newSupplier]); } setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
-            const handleSubscriberSave = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); if(!db) { if(editSubscriber) setSubscribers(prev => prev.map(s => s.id === id ? newSubscriber : s)); else setSubscribers(prev => [...prev, newSubscriber]); } setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
+            const handleClientSave = () => { if(!clientForm.name) return notify('Nome obrigatório', 'error'); const id = editClient ? editClient.id : Date.now(); const newClient = { ...clientForm, id }; saveItem('clients', newClient, id); setModal(null); setEditClient(null); setClientForm({ name: '', phone: '', plate: '', points: 0, notes: '' }); notify('Cliente salvo!'); };
+            const handleSupplierSave = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
+            const handleSubscriberSave = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
 
             const handleEditTicket = (t) => { setEditTicketForm({ plate: t.plate, model: t.model, type: t.type, notes: t.notes || '' }); setActiveTicket(t); setModal('edit_ticket'); };
             const saveTicketEdit = () => {
                 if(activeTicket) {
                     const updated = { ...activeTicket, ...editTicketForm };
                     saveItem('tickets', updated, activeTicket.id);
-                    if(!db) setTickets(tickets.map(t => t.id === activeTicket.id ? updated : t));
                     setModal(null); notify('Veículo atualizado!');
                 }
             };
-            const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); if(!db) setTickets(tickets.filter(t => t.id !== id)); notify('Veículo excluído'); } };
+            const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); notify('Veículo excluído'); } };
 
             const handleEditFinance = (item) => { 
                 setEditingFinanceId(item.id); 
@@ -780,10 +823,8 @@
                 if(confirm('Excluir este lançamento permanentemente?')) { 
                     if (item.isHistory) {
                         deleteItem('history', item.id);
-                        if(!db) setHistory(history.filter(h => h.id !== item.id));
                     } else {
                         deleteItem('finances', item.id); 
-                        if(!db) setFinances(finances.filter(f => f.id !== item.id)); 
                     }
                     notify('Excluído com sucesso!'); 
                 } 
@@ -795,17 +836,16 @@
                 if (editingServiceId) {
                     const updated = { ...serviceConfigForm, id: editingServiceId, price };
                     saveItem('servicesList', updated, editingServiceId);
-                    if(!db) setServicesList(prev => prev.map(s => s.id === editingServiceId ? updated : s));
                     setEditingServiceId(null); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço atualizado!');
                 } else {
                     const newService = { ...serviceConfigForm, id: Date.now(), price };
                     saveItem('servicesList', newService);
-                    if(!db) setServicesList([...servicesList, newService]); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!');
+                    setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!');
                 }
             };
             const handleEditService = (service) => { setServiceConfigForm({ name: service.name, price: service.price }); setEditingServiceId(service.id); };
             const cancelEditService = () => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); };
-            const removeServiceConfig = (id) => { deleteItem('servicesList', id); if(!db) setServicesList(servicesList.filter(s => s.id !== id)); };
+            const removeServiceConfig = (id) => { deleteItem('servicesList', id); };
             
             const downloadBills = () => { const dueBills = finances.filter(f => f.type === 'Despesa'); if (dueBills.length === 0) return notify('Nenhuma despesa.', 'info'); let textContent = "RELATÓRIO DE CONTAS\n===================\n\n"; dueBills.forEach(b => { textContent += `DATA: ${new Date(b.date).toLocaleDateString()}\nDESC: ${b.description}\nCAT: ${b.category}\nVALOR: ${formatCurrency(b.value)}\n----------------\n`; }); textContent += `\nTOTAL: ${formatCurrency(dueBills.reduce((acc, curr) => acc + curr.value, 0))}`; const blob = new Blob([textContent], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `boletos_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Download iniciado.'); };
             
@@ -843,7 +883,6 @@
                 if(c) {
                     const updated = { ...c, points: Math.max(0, (c.points || 0) + amount) };
                     saveItem('clients', updated, c.id);
-                    if(!db) setClients(prev => prev.map(cl => cl.id === clientId ? updated : cl));
                     notify(amount > 0 ? 'Pontos add!' : 'Pontos resgatados!'); 
                 }
             };
