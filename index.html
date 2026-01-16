@@ -313,17 +313,27 @@
                     // A senha será usada como CHAVE DE CRIPTOGRAFIA (Cofre)
                 }
 
-                // Autenticação Anônima Firebase para acesso ao DB
+                // Autenticação Firebase para acesso ao DB
                 try {
                     const auth = firebase.auth();
                     if (!auth.currentUser) {
-                        await auth.signInAnonymously();
+                        // Tenta usar token do ambiente se disponível (Correção para erro auth/configuration-not-found)
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
                     }
                 } catch (err) {
-                    console.error("Erro auth anônima", err);
-                    setError('Erro de conexão com o servidor seguro.');
-                    setLoading(false);
-                    return;
+                    console.error("Erro auth", err);
+                    if (err.code === 'auth/configuration-not-found' || err.code === 'auth/operation-not-allowed') {
+                         console.warn("Auth nuvem indisponível (configuração), tentando modo local.");
+                         // Permite seguir, mas o sync de nuvem pode falhar silenciosamente
+                    } else {
+                        setError('Erro de conexão com o servidor seguro: ' + err.message);
+                        setLoading(false);
+                        return;
+                    }
                 }
 
                 // Salvar Sessão
