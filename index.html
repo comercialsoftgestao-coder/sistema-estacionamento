@@ -311,8 +311,35 @@
                 } catch (err) {
                     // SILENT FAIL TOTAL: Se o servidor reclamar (400), o app ABRE igual.
                     // Isso é essencial para não travar o usuário por configs de nuvem externas.
-                    console.warn("Auth nuvem falhou, forçando entrada Offline Segura:", err.code);
-                    // Não damos return aqui! Deixamos o código seguir para salvar a sessão local.
+                    const isConfigError = err.code === 'auth/configuration-not-found' || 
+                                          err.code === 'auth/operation-not-allowed' || 
+                                          err.code === 'auth/invalid-api-key' || 
+                                          err.message && err.message.includes('Bad Request');
+                                          
+                    if (isConfigError) {
+                         console.warn("Auth nuvem falhou, forçando entrada Offline Segura:", err.code);
+                         setError('Aviso: Login na nuvem pendente de ativação no Firebase Console (Email/Senha). Entrando em modo local...');
+                         // Pequeno delay para usuário ler o aviso antes de entrar
+                         await new Promise(r => setTimeout(r, 2000));
+                    } else if (err.code === 'auth/wrong-password') {
+                        setError('Senha incorreta.');
+                        setLoading(false);
+                        return;
+                    } else if (err.code === 'auth/user-not-found') {
+                        setError('Usuário não encontrado. Crie uma conta.');
+                        setLoading(false);
+                        return;
+                    } else if (err.code === 'auth/email-already-in-use') {
+                        setError('Usuário já existe. Faça login.');
+                        setLoading(false);
+                        return;
+                    } else {
+                        // Outros erros de rede: avisa mas tenta seguir
+                        console.error("Erro rede:", err);
+                        // setError('Erro de conexão. Tente novamente.');
+                        // setLoading(false);
+                        // return;
+                    }
                 }
 
                 // Salvar Sessão LOCAL (Sempre funciona)
