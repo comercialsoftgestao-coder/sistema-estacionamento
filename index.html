@@ -66,13 +66,13 @@
         }
     </style>
 
-    <!-- GERAÇÃO DINÂMICA DO MANIFESTO (Correção de SyntaxError) -->
+    <!-- GERAÇÃO DINÂMICA DO MANIFESTO (Correção de start_url) -->
     <script>
         (function() {
             const manifest = {
                 "name": "Parking Pro",
                 "short_name": "ParkingPro",
-                "start_url": ".",
+                "start_url": window.location.href,
                 "display": "standalone",
                 "background_color": "#0f172a",
                 "theme_color": "#0891b2",
@@ -221,7 +221,7 @@
             // --- INICIALIZAÇÃO FIREBASE (Isolamento Total) ---
             useEffect(() => {
                 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-                    apiKey: "",
+                    apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                     authDomain: "estacionamento-332eb.firebaseapp.com",
                     projectId: "estacionamento-332eb",
                     storageBucket: "estacionamento-332eb.firebasestorage.app",
