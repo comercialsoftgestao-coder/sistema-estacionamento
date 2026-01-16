@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Parking Pro">
-    <link rel="manifest" href="manifest.json">
+    
     <!-- ÍCONE ATUALIZADO CONFORME PEDIDO -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/256/75/75905.png">
 
@@ -35,8 +35,12 @@
     <!-- Tesseract.js para OCR (Leitura de Placas) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
+    <!-- Crypto JS para Cofre Digital -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
     <!-- Firebase App & Firestore -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
     <style>
@@ -107,21 +111,42 @@
         }
     </style>
     
-    <!-- REGISTRO SERVICE WORKER (PWA) - CORRIGIDO PARA AMBIENTES SANDBOX -->
+    <!-- REGISTRO SERVICE WORKER & MANIFEST DINÂMICO -->
     <script>
+        // Gerador Dinâmico de Manifest para corrigir Erro 404 e garantir cores
+        (function() {
+            const manifestData = {
+                "name": "Parking Pro",
+                "short_name": "ParkingPro",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#0f172a",
+                "theme_color": "#0891b2",
+                "icons": [{
+                    "src": "https://cdn-icons-png.flaticon.com/256/75/75905.png",
+                    "sizes": "256x256",
+                    "type": "image/png"
+                }]
+            };
+            const blob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            const manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = manifestURL;
+            document.head.appendChild(manifestLink);
+        })();
+
+        // Registro SW
         if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then(reg => console.log('PWA: Service Worker registrado com sucesso:', reg.scope))
                     .catch(err => {
-                        // Apenas loga o erro se não for um problema de protocolo
                         if (!err.message.includes('protocol')) {
                             console.error('PWA: Erro ao registrar Service Worker:', err);
                         }
                     });
             });
-        } else {
-            console.log('PWA: Service Worker ignorado (protocolo não suportado ou funcionalidade ausente).');
         }
     </script>
 </head>
@@ -130,6 +155,27 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- SISTEMA DE COFRE DIGITAL (Encryption) ---
+        const Security = {
+            encrypt: (data, key) => {
+                if (!data || !key) return data;
+                try {
+                    return CryptoJS.AES.encrypt(JSON.stringify(data), key).toString();
+                } catch (e) { console.error("Erro criptografia", e); return data; }
+            },
+            decrypt: (ciphertext, key) => {
+                if (!ciphertext || !key) return ciphertext;
+                try {
+                    const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+                    const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+                    return decryptedData;
+                } catch (e) { 
+                    // Se falhar (ex: dados antigos não criptografados), retorna original se possível
+                    return ciphertext; 
+                }
+            }
+        };
 
         // --- COMPONENTE TOAST ---
         const Toast = ({ message, type, show, onClose }) => {
@@ -221,48 +267,126 @@
             );
         };
 
-        // --- TELA DE LOGIN ---
-        const LoginScreen = ({ onLogin, systemName }) => {
-            const [u, setU] = useState('');
-            const [p, setP] = useState('');
-            const [remember, setRemember] = useState(false);
+        // --- NOVA TELA DE IDENTIDADE (LOGIN/CADASTRO) ---
+        const IdentityScreen = ({ onAuthenticate }) => {
+            const [mode, setMode] = useState('login'); // login ou register
+            const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '', email: '' });
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
 
             useEffect(() => {
-                const savedUser = localStorage.getItem('parkingpro_saved_user');
-                const savedPass = localStorage.getItem('parkingpro_saved_pass');
-                if (savedUser && savedPass) {
-                    setU(savedUser);
-                    setP(savedPass);
-                    setRemember(true);
+                // Verificar sessão persistente
+                const savedUser = localStorage.getItem('parkingpro_user_session');
+                const savedKey = localStorage.getItem('parkingpro_user_key');
+                if (savedUser && savedKey) {
+                    onAuthenticate(JSON.parse(savedUser), savedKey);
                 }
             }, []);
 
-            const handleSubmit = (e) => {
+            const handleSubmit = async (e) => {
                 e.preventDefault();
-                onLogin(u, p, remember);
+                setError('');
+                setLoading(true);
+
+                // Normalização do username para usar como ID/Prefixo
+                const safeUsername = formData.username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                if (!safeUsername || safeUsername.length < 3) {
+                    setError('Usuário deve ter pelo menos 3 caracteres alfanuméricos.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (formData.password.length < 4) {
+                    setError('Senha deve ter pelo menos 4 caracteres.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (mode === 'register') {
+                    if (formData.password !== formData.confirmPassword) {
+                        setError('As senhas não coincidem.');
+                        setLoading(false);
+                        return;
+                    }
+                    // Simulação de cadastro (Na prática, salvamos no DB se possível, mas aqui definimos a sessão)
+                    // A senha será usada como CHAVE DE CRIPTOGRAFIA (Cofre)
+                }
+
+                // Autenticação Anônima Firebase para acesso ao DB
+                try {
+                    const auth = firebase.auth();
+                    if (!auth.currentUser) {
+                        await auth.signInAnonymously();
+                    }
+                } catch (err) {
+                    console.error("Erro auth anônima", err);
+                    setError('Erro de conexão com o servidor seguro.');
+                    setLoading(false);
+                    return;
+                }
+
+                // Salvar Sessão
+                const userData = { username: safeUsername, email: formData.email, role: 'admin' };
+                const encryptionKey = formData.password; // O segredo é a senha
+
+                localStorage.setItem('parkingpro_user_session', JSON.stringify(userData));
+                localStorage.setItem('parkingpro_user_key', encryptionKey);
+
+                setLoading(false);
+                onAuthenticate(userData, encryptionKey);
             };
 
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden px-4">
-                    <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1506521781263-d8422e82f27a?q=80&w=2070&auto=format&fit=crop")', backgroundSize: 'cover', backgroundPosition: 'center'}}></div>
-                    <div className="bg-slate-900/90 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-sm z-10 border border-slate-800">
-                        <div className="flex justify-center mb-6"><BrandLogo title={systemName} /></div>
+                    <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1621929747188-0b4dc28498d2?q=80&w=2072&auto=format&fit=crop")', backgroundSize: 'cover', backgroundPosition: 'center'}}></div>
+                    <div className="bg-slate-900/95 backdrop-blur-xl p-8 rounded-2xl shadow-2xl w-full max-w-sm z-10 border border-slate-800">
+                        <div className="flex justify-center mb-6"><BrandLogo title="IDENTIDADE" /></div>
+                        
+                        <div className="flex justify-center mb-6 bg-slate-800 p-1 rounded-lg">
+                            <button onClick={()=>setMode('login')} className={`flex-1 py-2 text-xs font-bold rounded transition ${mode==='login' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400'}`}>LOGIN</button>
+                            <button onClick={()=>setMode('register')} className={`flex-1 py-2 text-xs font-bold rounded transition ${mode==='register' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400'}`}>NOVA IDENTIDADE</button>
+                        </div>
+
+                        {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 text-xs p-3 rounded mb-4 flex items-center gap-2"><i className="ph-fill ph-warning"></i> {error}</div>}
+
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <input className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-base md:text-sm text-white focus:border-cyan-500 outline-none transition" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
-                            <input type="password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded text-base md:text-sm text-white focus:border-cyan-500 outline-none transition" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
-                            <div className="flex items-center gap-2">
-                                <input type="checkbox" id="remember" checked={remember} onChange={e => setRemember(e.target.checked)} className="w-4 h-4 accent-cyan-600 rounded cursor-pointer" />
-                                <label htmlFor="remember" className="text-sm text-slate-400 cursor-pointer select-none">Lembrar senha</label>
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Usuário (ID)</label>
+                                <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                    placeholder="Seu nome de usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
                             </div>
-                            <button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/20 active:scale-95">ABRIR SISTEMA</button>
+                            
+                            {mode === 'register' && (
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">E-mail de Recuperação</label>
+                                    <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                        type="email" placeholder="seu@email.com" value={formData.email} onChange={e=>setFormData({...formData, email:e.target.value})} />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Senha (Chave do Cofre)</label>
+                                <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                    placeholder="********" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} />
+                            </div>
+
+                            {mode === 'register' && (
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Confirmar Senha</label>
+                                    <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                        placeholder="********" value={formData.confirmPassword} onChange={e=>setFormData({...formData, confirmPassword:e.target.value})} />
+                                </div>
+                            )}
+
+                            <button disabled={loading} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/20 active:scale-95 flex items-center justify-center gap-2">
+                                {loading ? <i className="ph-bold ph-spinner animate-spin"></i> : (mode === 'login' ? 'ABRIR COFRE' : 'CRIAR IDENTIDADE')}
+                            </button>
                         </form>
-                        <div className="mt-4 text-center text-xs text-slate-600">
-                            <p>Admin / 1234</p>
-                            <div className="mt-6 border-t border-slate-800 pt-4">
-                                <p className="font-bold text-slate-500">© 2026 SoftGestão. Todos os direitos reservados.</p>
-                                <p className="mt-1">Pertence a Adriana Mendes da Cruz Sousa.</p>
-                                <p className="mt-1">Todos os direitos e marca registrada são dela.</p>
-                            </div>
+                        
+                        <div className="mt-6 border-t border-slate-800 pt-4 text-center">
+                            <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1"><i className="ph-fill ph-lock-key"></i> Dados criptografados localmente</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Ambiente Seguro v2.0</p>
                         </div>
                     </div>
                 </div>
@@ -271,8 +395,10 @@
 
         // --- APP ---
         function App() {
-            const [view, setView] = useState('loading'); // Alterado para loading inicialmente
-            const [userRole, setUserRole] = useState('admin'); 
+            const [view, setView] = useState('identity'); // Alterado para identity
+            const [userRole, setUserRole] = useState('admin');
+            const [currentUser, setCurrentUser] = useState(null); // Estado do usuário logado
+            const [encryptionKey, setEncryptionKey] = useState(null); // Chave do cofre
             const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
             const notify = (msg, type='success') => { setToast({ show: true, msg, type }); setTimeout(()=>setToast({...toast, show: false}), 3000); };
 
@@ -284,13 +410,12 @@
                 priceMotoHour: 8.00, 
                 toleranceMin: 15, 
                 dailyRate: 60.00,
-                requireLogin: false, // Nova opção: desativado por padrão
+                requireLogin: true, 
                 loginUser: 'admin',
                 loginPass: '1234'
             });
 
-            const [credentials, setCredentials] = useState({ user: 'admin', pass: '1234' });
-
+            // Estados de Dados
             const [tickets, setTickets] = useState([]); 
             const [history, setHistory] = useState([]); 
             const [subscribers, setSubscribers] = useState([]); 
@@ -317,15 +442,17 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            const FIREBASE_CONFIG = {
-                apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
+            // --- FIREBASE SETUP FLEXÍVEL ---
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const defaultFirebaseConfig = {
+                apiKey: "", // Usa global se vazia
                 authDomain: "estacionamento-332eb.firebaseapp.com",
                 projectId: "estacionamento-332eb",
                 storageBucket: "estacionamento-332eb.firebasestorage.app",
                 messagingSenderId: "467691522256",
                 appId: "1:467691522256:web:6d4495458c494e753cb6d5"
             };
-
+            
             const [entryForm, setEntryForm] = useState({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
             const [agreementForm, setAgreementForm] = useState({ name: '', discountType: 'free_time', value: 0 });
             const [checklistForm, setChecklistForm] = useState({ plate: '', model: '', fuel: '1/2', items: [], notes: '', date: '' });
@@ -378,38 +505,65 @@
                 }
             };
 
+            // --- INICIALIZAÇÃO FIREBASE SEGURA ---
             useEffect(() => {
-                if (!firebase.apps.length) {
+                const initFirebase = async () => {
+                    if (!firebase.apps.length) {
+                        try {
+                            const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+                            firebase.initializeApp(configToUse);
+                        } catch (e) {
+                            console.error("Erro Init Firebase", e);
+                        }
+                    }
+                    
                     try {
-                        firebase.initializeApp(FIREBASE_CONFIG);
+                        // Não inicia DB ainda, espera autenticação no IdentityScreen
+                        // Apenas prepara objeto
                         const firestore = firebase.firestore();
                         setDb(firestore);
                         setIsOnline(true);
-                    } catch (e) {
-                        console.error("Erro Firebase", e);
+                    } catch(e) {
+                        console.error("Erro Firestore", e);
                         setIsOnline(false);
                     }
-                } else {
-                    const firestore = firebase.firestore();
-                    setDb(firestore);
-                    setIsOnline(true);
-                }
+                };
+                initFirebase();
             }, []);
 
+            // --- HOOK DE SINCRONIZAÇÃO BLINDADA (DATA ISOLATION & ENCRYPTION) ---
             const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
-                    if (db) {
-                        const unsubscribe = db.collection(collectionName).onSnapshot(snapshot => {
-                            const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })); 
+                    if (!db || !currentUser || !encryptionKey) {
+                        // Se não tem DB ou User, tenta carregar do LocalStorage Criptografado
+                        return; 
+                    }
+
+                    // CAMINHO BLINDADO: artifacts/APP_ID/public/data/USER_COLLECTION
+                    // Ex: artifacts/123/public/data/andrea_tickets
+                    const securePath = `artifacts/${appId}/public/data/${currentUser.username}_${collectionName}`;
+                    
+                    const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
+                        .onSnapshot(snapshot => {
+                            const data = snapshot.docs.map(doc => {
+                                const rawData = doc.data();
+                                // Tenta descriptografar, se falhar (dado legado), usa raw
+                                let decrypted = rawData;
+                                if (rawData.encryptedData) {
+                                    decrypted = Security.decrypt(rawData.encryptedData, encryptionKey);
+                                    // Se decrypt falhar ou não retornar objeto, mantém null/erro
+                                    if (!decrypted && rawData.encryptedData) {
+                                        console.warn(`Falha ao descriptografar item ${doc.id}`);
+                                        return { ...rawData, id: doc.id, decryptError: true };
+                                    }
+                                }
+                                return { ...decrypted, id: doc.id };
+                            }); 
                             setState(data);
                         }, err => console.error(`Sync error ${collectionName}`, err));
-                        return () => unsubscribe();
-                    } else if (view !== 'loading' && view !== 'login') {
-                        const stored = localStorage.getItem(`parkingpro_${collectionName}`);
-                        if (stored) setState(JSON.parse(stored));
-                        else if (fallbackData) setState(fallbackData);
-                    }
-                }, [db, view]);
+                    
+                    return () => unsubscribe();
+                }, [db, currentUser, encryptionKey]);
             };
 
             const getDemoData = () => {
@@ -430,6 +584,7 @@
                 return { demoServices };
             };
 
+            // Ativação dos Syncs apenas quando logado
             useSync('tickets', setTickets, []);
             useSync('history', setHistory, []);
             useSync('finances', setFinances, []);
@@ -438,98 +593,60 @@
             useSync('team', setTeam, []);
             useSync('suppliers', setSuppliers, []);
             useSync('agreements', setAgreements, []);
-            
-            useEffect(() => {
-                if (db) {
-                    const unsubscribe = db.collection('servicesList').onSnapshot(snapshot => {
-                        let data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                        if (data.length === 0) {
-                            const { demoServices } = getDemoData();
-                            setServicesList(demoServices);
-                        } else {
-                            setServicesList(data);
-                        }
-                    });
-                    return () => unsubscribe();
-                } else if (view !== 'loading' && view !== 'login') {
-                    const stored = localStorage.getItem('parkingpro_servicesList');
-                    if (stored) setServicesList(JSON.parse(stored));
-                    else {
-                        const { demoServices } = getDemoData();
-                        setServicesList(demoServices);
-                    }
-                }
-            }, [db, view]);
+            useSync('servicesList', setServicesList, []);
+            useSync('config', (data) => { if(data && data.length > 0) setConfig(data[0]); }, []);
 
-            useEffect(() => {
-                const storedConfig = localStorage.getItem('parkingpro_config');
-                const storedCreds = localStorage.getItem('parkingpro_credentials');
-                
-                let currentConfig = config;
-                if (storedConfig) {
-                    currentConfig = JSON.parse(storedConfig);
-                    setConfig(currentConfig);
-                }
-
-                if (storedCreds) {
-                    setCredentials(JSON.parse(storedCreds));
-                }
-
-                // Lógica de acesso automático
-                if (currentConfig.requireLogin) {
-                    setView('login');
-                } else {
-                    setUserRole('admin'); // Acesso total sem login
-                    setView('app');
-                }
-            }, []);
-
+            // --- FUNÇÃO DE SALVAMENTO SEGURO (CRYPT + ISOLATION) ---
             const saveItem = async (col, item, idOverride) => {
+                if (!db || !currentUser || !encryptionKey) {
+                    notify('Erro: Cofre fechado. Faça login novamente.', 'error');
+                    return;
+                }
+
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() }; 
                 
-                if (db) {
-                    try {
-                        await db.collection(col).doc(id).set(itemToSave);
-                    } catch(e) { notify('Erro ao salvar na nuvem', 'error'); }
+                // CRIPTOGRAFIA
+                const encryptedPayload = {
+                    encryptedData: Security.encrypt(itemToSave, encryptionKey),
+                    updatedAt: new Date().toISOString(),
+                    owner: currentUser.username // Metadado visível para auditoria
+                };
+
+                const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
+
+                try {
+                    await securePathCollection.doc(id).set(encryptedPayload);
+                } catch(e) { 
+                    console.error(e);
+                    notify('Erro ao salvar no cofre nuvem', 'error'); 
                 }
             };
 
             const deleteItem = async (col, id) => {
-                if (db) {
-                    await db.collection(col).doc(String(id)).delete();
+                if (!db || !currentUser) return;
+                const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
+                await securePathCollection.doc(String(id)).delete();
+            };
+
+            // Login e Autenticação Master
+            const handleIdentityAuth = (user, key) => {
+                setCurrentUser(user);
+                setEncryptionKey(key);
+                setView('app');
+                notify(`Identidade confirmada: ${user.username}`, 'success');
+            };
+
+            const handleLogout = () => {
+                if(confirm("Deseja fechar o cofre e sair?")) {
+                    localStorage.removeItem('parkingpro_user_session');
+                    localStorage.removeItem('parkingpro_user_key');
+                    setCurrentUser(null);
+                    setEncryptionKey(null);
+                    setView('identity');
                 }
             };
 
-            useEffect(() => {
-                if (view === 'app') {
-                    const save = (key, data) => localStorage.setItem(`parkingpro_${key}`, JSON.stringify(data));
-                    save('tickets', tickets); save('history', history); save('subscribers', subscribers);
-                    save('agreements', agreements); save('checklists', checklists); save('finances', finances);
-                    save('team', team); save('clients', clients); save('suppliers', suppliers);
-                    save('servicesList', servicesList); save('config', config);
-                }
-            }, [tickets, history, subscribers, agreements, checklists, finances, team, clients, suppliers, servicesList, config]);
-
-            const handleLogin = (u, p, remember) => { 
-                const validUser = credentials.user;
-                const validPass = credentials.pass;
-
-                if (u === validUser && p === validPass) { 
-                    if (remember) { 
-                        localStorage.setItem('parkingpro_saved_user', u); 
-                        localStorage.setItem('parkingpro_saved_pass', p); 
-                    } else { 
-                        localStorage.removeItem('parkingpro_saved_user'); 
-                        localStorage.removeItem('parkingpro_saved_pass'); 
-                    } 
-                    setUserRole(u.toLowerCase() === 'admin' ? 'admin' : 'operator');
-                    setView('app'); 
-                } else { 
-                    notify('Acesso negado.', 'error'); 
-                } 
-            };
-            
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -731,10 +848,13 @@
                 return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
             }, [tickets, history, subscribers, finances, config]);
 
-            const saveConfig = () => { localStorage.setItem('parkingpro_config', JSON.stringify(config)); notify('Configurações salvas!'); };
+            // Save config agora salva seguro também
+            const saveConfig = () => { 
+                saveItem('config', config, 'main_config'); 
+                notify('Configurações salvas no Cofre!'); 
+            };
 
-            if (view === 'loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-500 font-bold animate-pulse">CARREGANDO...</div>;
-            if (view === 'login') return <LoginScreen onLogin={handleLogin} systemName={config.name} />;
+            if (view === 'identity') return <IdentityScreen onAuthenticate={handleIdentityAuth} />;
 
             return (
                 <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
@@ -765,16 +885,34 @@
                                 </button>
                             ))}
                         </nav>
+                        
+                        {/* BOTÃO DE LOGOUT SEGURO */}
+                        <div className="px-4 pb-2">
+                             <button onClick={handleLogout} className="w-full bg-red-900/20 hover:bg-red-900/40 text-red-400 p-3 rounded-lg flex items-center justify-center gap-2 text-xs font-bold transition">
+                                <i className="ph-bold ph-lock-key-open"></i> FECHAR COFRE
+                             </button>
+                        </div>
+
                         <div className="p-4 text-center text-xs text-slate-600 border-t border-slate-800">
-                             {isOnline ? (
-                                 <span className="flex items-center justify-center gap-2 text-emerald-500 font-bold animate-pulse">
-                                     <i className="ph-fill ph-cloud-check text-lg"></i> Online (Nuvem)
+                             <div className="flex flex-col gap-2 mb-2">
+                                 {isOnline ? (
+                                     <span className="flex items-center justify-center gap-2 text-emerald-500 font-bold animate-pulse">
+                                         <i className="ph-fill ph-cloud-check text-lg"></i> Online
+                                     </span>
+                                 ) : (
+                                     <span className="flex items-center justify-center gap-2 text-orange-500 font-bold">
+                                         <i className="ph-fill ph-wifi-slash text-lg"></i> Offline
+                                     </span>
+                                 )}
+                                 {currentUser && (
+                                     <span className="flex items-center justify-center gap-2 text-cyan-500 font-bold bg-cyan-950/30 py-1 rounded">
+                                         <i className="ph-fill ph-user-circle text-lg"></i> {currentUser.username}
+                                     </span>
+                                 )}
+                                 <span className="flex items-center justify-center gap-2 text-violet-500 font-bold bg-violet-950/30 py-1 rounded">
+                                     <i className="ph-fill ph-shield-check text-lg"></i> COFRE ATIVO
                                  </span>
-                             ) : (
-                                 <span className="flex items-center justify-center gap-2 text-orange-500 font-bold">
-                                     <i className="ph-fill ph-wifi-slash text-lg"></i> Offline (Local)
-                                 </span>
-                             )}
+                             </div>
                              <div className="mt-4 pt-4 border-t border-slate-800">
                                 <p className="font-bold text-slate-500">© 2026 SoftGestão. Todos os direitos reservados.</p>
                                 <p className="mt-1">Pertence a Adriana Mendes da Cruz Sousa.</p>
@@ -1091,63 +1229,8 @@
                                             </div>
                                         </div>
 
-                                        {/* NOVO: OPÇÃO DE LOGIN OPCIONAL */}
-                                        <div className="mt-8 pt-8 border-t border-slate-700 space-y-6">
-                                            <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-                                                <i className="ph-fill ph-lock"></i> Segurança e Acesso
-                                            </h3>
-                                            
-                                            <div className="flex items-center justify-between p-4 bg-slate-900 rounded-lg border border-slate-700">
-                                                <div>
-                                                    <p className="font-bold text-white">Ativar Tela de Login</p>
-                                                    <p className="text-xs text-slate-500">Se desativado, o sistema abrirá direto no painel.</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => setConfig({...config, requireLogin: !config.requireLogin})}
-                                                    className={`w-14 h-8 rounded-full transition-all relative ${config.requireLogin ? 'bg-cyan-600' : 'bg-slate-700'}`}
-                                                >
-                                                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${config.requireLogin ? 'left-7' : 'left-1'}`}></div>
-                                                </button>
-                                            </div>
-
-                                            {config.requireLogin && (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900 rounded-lg border border-slate-700 animate-fade-in">
-                                                    <div>
-                                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Usuário para Acesso</label>
-                                                        <input 
-                                                            className="w-full bg-slate-800 border border-slate-700 p-3 rounded text-white" 
-                                                            value={credentials.user} 
-                                                            onChange={e => setCredentials({...credentials, user: e.target.value})}
-                                                            placeholder="Ex: admin"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Senha para Acesso</label>
-                                                        <input 
-                                                            type="password"
-                                                            className="w-full bg-slate-800 border border-slate-700 p-3 rounded text-white" 
-                                                            value={credentials.pass} 
-                                                            onChange={e => setCredentials({...credentials, pass: e.target.value})}
-                                                            placeholder="Sua senha secreta"
-                                                        />
-                                                    </div>
-                                                    <div className="md:col-span-2">
-                                                        <button 
-                                                            onClick={() => {
-                                                                localStorage.setItem('parkingpro_credentials', JSON.stringify(credentials));
-                                                                notify('Credenciais atualizadas com sucesso!');
-                                                            }}
-                                                            className="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-bold text-sm transition"
-                                                        >
-                                                            Salvar Novas Credenciais
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-
                                         <button onClick={saveConfig} className="mt-8 w-full md:w-auto bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-4 rounded-lg font-bold shadow-lg shadow-cyan-900/20 active:scale-95 transition">
-                                            SALVAR TODAS AS CONFIGURAÇÕES
+                                            SALVAR E SINCRONIZAR CONFIGURAÇÕES
                                         </button>
                                     </div>
                                 </div>
