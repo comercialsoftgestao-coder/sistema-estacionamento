@@ -231,7 +231,7 @@
         // COMPONENTE LOGO DINÂMICA
         const BrandLogo = ({ title }) => {
             const displayText = title && title.trim() !== '' ? title : "PARKING PRO";
-            const isDefault = displayText.replace(/\s/g, '').toUpperCase() === 'PARKINGPRO';
+            const isDefault = displayText.toUpperCase() === 'PARKING PRO' || displayText.replace(/\s/g, '').toUpperCase() === 'PARKINGPRO';
 
             return (
                 <div className="flex items-center gap-2">
@@ -295,17 +295,15 @@
                     return;
                 }
 
-                // CORREÇÃO DEFINITIVA ERRO 400: Bypass de Auth na Nuvem para evitar o erro de POST blocked
+                // CORREÇÃO DEFINITIVA ERRO 400: Eliminando a chamada problemático de Auth por e-mail na nuvem
+                // Usaremos login anônimo como camada de rede para o Firestore e o login local para o cofre.
                 try {
                     const auth = firebase.auth();
-                    const virtualEmail = `${safeUsername}@parking.pro`; 
-                    
                     if (!auth.currentUser) {
                         try {
-                            // Tenta login anônimo primeiro para garantir Firestore sem spam de 400 na tela
                             await auth.signInAnonymously();
                         } catch (firebaseErr) {
-                            console.warn("Firebase Auth Fail. Running Secure Local Mode.");
+                            console.warn("Nuvem Offline - Usando modo seguro local.");
                         }
                     }
                 } catch (err) {
@@ -347,7 +345,7 @@
                             <div>
                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Administrador Único</label>
                                 <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
-                                    placeholder="Nome de usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
+                                    placeholder="Seu usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
                             </div>
                             
                             {mode === 'register' && (
@@ -360,14 +358,14 @@
 
                             <div>
                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Chave de Segurança (Senha)</label>
-                                <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                <input type="password" university-none="true" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
                                     placeholder="********" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} />
                             </div>
 
                             {mode === 'register' && (
                                 <div>
                                     <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Confirmar Chave</label>
-                                    <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
+                                    <input type="password" university-none="true" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
                                         placeholder="********" value={formData.confirmPassword} onChange={e=>setFormData({...formData, confirmPassword:e.target.value})} />
                                 </div>
                             )}
@@ -737,7 +735,7 @@
                                     </div>
 
                                     {/* BOTÃO DE MANUTENÇÃO DISCRETO NO FINAL DA PÁGINA */}
-                                    <div className="mt-12 pt-12 border-t border-slate-800/50 text-center opacity-30 hover:opacity-100 transition">
+                                    <div className="mt-12 pt-12 border-t border-slate-800/50 text-center opacity-60 hover:opacity-100 transition">
                                         <button onClick={hardAppReset} className="text-[10px] uppercase font-bold tracking-widest text-slate-500 flex items-center justify-center gap-2 mx-auto">
                                             <i className="ph ph-wrench"></i> ROTINA DE MANUTENÇÃO
                                         </button>
