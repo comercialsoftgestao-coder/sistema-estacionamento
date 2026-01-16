@@ -13,11 +13,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Parking Pro">
     
-    <!-- ÍCONE ATUALIZADO -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/256/75/75905.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/256/75/75905.png">
 
-    <!-- PWA MANIFEST DYNAMIC INJECTION (Elimina Erro 404) -->
+    <!-- PWA MANIFEST DYNAMIC INJECTION -->
     <script>
         (function() {
             const manifest = {
@@ -63,7 +62,7 @@
     <!-- Tesseract.js para OCR -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (v10.7.1 Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -90,7 +89,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- GLOBAL VARIABLES & FIREBASE CONFIG ---
+        // --- AMBIENTE E CONFIGURAÇÃO (OBRIGATÓRIO) ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "" };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'parking-pro-master';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -207,17 +206,16 @@
                 setTimeout(()=>setToast(prev => ({...prev, show: false})), 3000); 
             };
 
-            // Firebase Initial Auth sequence
+            // INICIALIZAÇÃO FIREBASE E AUTENTICAÇÃO (MANDATORY PATTERN RULE 3)
             useEffect(() => {
-                const initAuth = async () => {
+                const initFirebase = async () => {
                     try {
-                        if (!firebase.apps.length) {
-                            firebase.initializeApp(firebaseConfig);
-                        }
-                        const auth = firebase.auth();
-                        const firestore = firebase.firestore();
+                        const app = firebase.initializeApp(firebaseConfig);
+                        const auth = firebase.auth(app);
+                        const firestore = firebase.firestore(app);
                         setDb(firestore);
 
+                        // Autenticação Inicial
                         if (initialAuthToken) {
                             await auth.signInWithCustomToken(initialAuthToken);
                         } else {
@@ -238,20 +236,23 @@
                         });
                         return () => unsubscribe();
                     } catch (e) {
-                        console.error("Firebase Auth Error:", e);
-                        notify("Erro de conexão segura.", "error");
+                        console.error("Firebase Init/Auth Error:", e);
+                        notify("Erro ao conectar com o serviço seguro.", "error");
+                        setView('login');
                     }
                 };
-                initAuth();
+                initFirebase();
             }, []);
 
-            // Helper for Isolated Collections (Rule 1)
+            // FIREBASE PATH HELPER (RULE 1)
             const getCol = (name) => {
                 if (!db || !userLogin) return null;
+                // Caminho obrigatório: /artifacts/{appId}/public/data/{collectionName}
+                // Adicionamos o prefixo do usuário para o isolamento do Cofre Digital
                 return db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${userLogin}_${name}`);
             };
 
-            // Unified Synchronization Hook
+            // SINCRONIZAÇÃO UNIFICADA
             const useSync = (name, setter) => {
                 useEffect(() => {
                     if (!currentUser || !isLogged) return;
@@ -260,10 +261,11 @@
                     const unsubscribe = col.onSnapshot(snap => {
                         const data = snap.docs.map(doc => {
                             const d = doc.data();
-                            return d.payload ? { ...Security.decrypt(d.payload), id: doc.id } : { ...d, id: doc.id };
+                            const decrypted = d.payload ? Security.decrypt(d.payload) : d;
+                            return { ...decrypted, id: doc.id };
                         });
                         setter(data);
-                    }, err => console.warn(`Sync ${name} blocked.`, err));
+                    }, err => console.warn(`Erro na sincronização de ${name}:`, err.message));
                     return () => unsubscribe();
                 }, [currentUser, isLogged, userLogin]);
             };
@@ -277,15 +279,16 @@
             useSync('team', setTeam);
 
             const handleIdentityLogin = async (u, p, e) => {
-                if (!u || !p || !currentUser) return notify("Erro de conexão", "error");
+                if (!u || !p || !currentUser) return notify("Conexão não estabelecida", "error");
                 try {
+                    // Documento de segurança isolado por nome de usuário
                     const statusDoc = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${u}_security`).doc('status');
                     const snap = await statusDoc.get();
 
                     if (loginMode === 'register') {
-                        if (snap.exists) return notify("Usuário já existe", "error");
+                        if (snap.exists) return notify("Este usuário já existe", "error");
                         await statusDoc.set({ payload: Security.encrypt({ login: u, pass: Security.encrypt(p), email: e, createdAt: new Date().toISOString() }) });
-                        notify("Cadastro realizado! Entre agora.");
+                        notify("Identidade criada! Entre agora.");
                         setLoginMode('login');
                         return;
                     }
@@ -300,8 +303,8 @@
                         setView('app');
                     } else notify("Senha incorreta", "error");
                 } catch (err) { 
-                    console.error(err);
-                    notify("Erro no Cofre Digital. Verifique as Rules.", "error"); 
+                    console.error("Login Error:", err);
+                    notify("Erro ao acessar o Cofre Digital.", "error"); 
                 }
             };
 
@@ -310,6 +313,7 @@
                 const col = getCol(colName);
                 if (!col) return;
                 const id = idOverride || String(Date.now());
+                // Criptografia Master antes de salvar
                 await col.doc(id).set({ payload: Security.encrypt(item) });
             };
 
@@ -318,7 +322,7 @@
                 if (col) await col.doc(String(id)).delete();
             };
 
-            // --- BUSINESS LOGIC (MANTIDA DO PARKING PRO) ---
+            // --- LÓGICA DE NEGÓCIO ---
             const handleEntry = () => { 
                 if (!entryForm.plate) return notify('Placa é obrigatória', 'error'); 
                 const entryDateObj = entryForm.manualEntry ? new Date(entryForm.manualEntry) : new Date(); 
@@ -343,31 +347,31 @@
                     }
                     saveItem('history', { ...newTicket, exitTime: exitDateObj.toISOString(), total, status: 'finished' });
                     setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
-                    notify('Lançamento histórico salvo!');
+                    notify('Histórico registrado!');
                     return;
                 }
                 saveItem('tickets', newTicket);
                 setEntryForm({ plate: '', model: '', type: 'Carro', notes: '', manualEntry: '', manualExit: '', damages: [] });
                 setActiveTicket(newTicket);
                 setModal('print_entry');
-                notify('Veículo registrado!');
+                notify('Entrada registrada!');
             };
 
             const confirmExit = () => { 
                 const finished = {...activeTicket, paymentMethod, exitTime: new Date().toISOString(), status: 'finished'}; 
                 saveItem('history', finished); 
                 deleteItem('tickets', activeTicket.id);
-                setModal('print_exit'); notify('Saída registrada!'); 
+                setModal('print_exit'); notify('Saída concluída!'); 
             };
 
             const stats = useMemo(() => {
                 const occupied = tickets.length;
-                const free = config.totalSpots - occupied;
+                const free = (config.totalSpots || 50) - occupied;
                 const revenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((a,b)=>a+(b.total||0), 0);
                 return { occupied, free, revenue };
             }, [tickets, history, config]);
 
-            if (view === 'loading') return <div className="h-screen bg-slate-950 flex items-center justify-center text-cyan-500 font-bold animate-pulse uppercase tracking-widest">Sincronizando Cofre Digital...</div>;
+            if (view === 'loading') return <div className="h-screen bg-slate-950 flex items-center justify-center text-cyan-500 font-bold animate-pulse uppercase tracking-widest">Sincronizando Cofre Master...</div>;
             if (!isLogged) return <LoginScreen onLogin={handleIdentityLogin} loginMode={loginMode} setLoginMode={setLoginMode} systemName={config.name} />;
 
             return (
@@ -378,15 +382,15 @@
                         <BrandLogo title={config.name} />
                         <nav className="mt-10 space-y-2 flex-1">
                             {['dashboard', 'patio', 'finance', 'config'].map(t => (
-                                <button key={t} onClick={() => setTab(t)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${tab === t ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <button key={t} onClick={() => setTab(t)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${tab === t ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                                     <i className={`ph-bold ph-${t === 'patio' ? 'car' : (t === 'finance' ? 'currency-dollar' : (t === 'config' ? 'gear' : 'gauge'))} text-xl`}></i>
                                     <span className="capitalize">{t}</span>
                                 </button>
                             ))}
                         </nav>
                         <div className="pt-6 border-t border-slate-800 text-center">
-                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter">Identidade: {userLogin}</p>
-                            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="mt-2 text-red-500 text-[10px] font-bold uppercase hover:underline">Encerrar Sessão</button>
+                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter">ID: {userLogin}</p>
+                            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="mt-2 text-red-500 text-[10px] font-bold uppercase hover:underline">Sair do Sistema</button>
                         </div>
                     </aside>
 
@@ -411,7 +415,7 @@
                                         <h3 className="text-4xl font-black mt-2">R$ {stats.revenue.toFixed(2)}</h3>
                                     </div>
                                     <div className="bg-slate-800 p-6 rounded-2xl border-t-4 border-violet-500 shadow-xl">
-                                        <p className="text-xs text-slate-400 uppercase font-black">Segurança</p>
+                                        <p className="text-xs text-slate-400 uppercase font-black">Proteção</p>
                                         <h3 className="text-lg font-black mt-2 text-cyan-400">COFRE ATIVO ✓</h3>
                                     </div>
                                 </div>
@@ -420,8 +424,8 @@
                                     <div className="flex items-center gap-6">
                                         <div className="text-5xl">🛡️</div>
                                         <div>
-                                            <h4 className="text-2xl font-black uppercase italic text-white tracking-tighter">Cofre Digital Master Ativo</h4>
-                                            <p className="text-slate-400 font-bold text-sm">Seus dados estão isolados e protegidos por criptografia de ponta.</p>
+                                            <h4 className="text-2xl font-black uppercase italic text-white tracking-tighter">Cofre Digital Parking Pro</h4>
+                                            <p className="text-slate-400 font-bold text-sm">Dados criptografados e isolados por Identidade Master.</p>
                                         </div>
                                     </div>
                                     <a href="https://wa.me/5511932186193" target="_blank" className="bg-emerald-600 px-8 py-4 rounded-2xl font-black uppercase text-xs hover:scale-105 transition-all shadow-lg shadow-emerald-900/30 flex items-center gap-2">
@@ -438,31 +442,29 @@
                                     <div className="space-y-4">
                                         <input className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-center text-3xl font-mono text-white uppercase focus:border-cyan-500 outline-none" placeholder="PLACA" value={entryForm.plate} onChange={e=>setEntryForm({...entryForm, plate:e.target.value.toUpperCase()})} />
                                         <input className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-cyan-500" placeholder="Modelo do Veículo" value={entryForm.model} onChange={e=>setEntryForm({...entryForm, model:e.target.value})} />
-                                        <button onClick={handleEntry} className="w-full bg-cyan-600 py-5 rounded-xl font-black uppercase shadow-lg hover:bg-cyan-500 active:scale-95 transition-all">Gerar Ticket no Cofre</button>
+                                        <button onClick={handleEntry} className="w-full bg-cyan-600 py-5 rounded-xl font-black uppercase shadow-lg hover:bg-cyan-500 active:scale-95 transition-all">Registrar no Cofre</button>
                                     </div>
                                 </div>
                                 <div className="lg:col-span-2 space-y-4">
-                                    <h3 className="font-black uppercase mb-4 tracking-widest text-slate-400 italic">Veículos no Pátio</h3>
-                                    {tickets.length === 0 && <p className="text-slate-600 italic">Nenhum veículo no pátio.</p>}
+                                    <h3 className="font-black uppercase mb-4 tracking-widest text-slate-400 italic">No Pátio Agora</h3>
+                                    {tickets.length === 0 && <p className="text-slate-600 italic">Nenhum veículo registrado no momento.</p>}
                                     {tickets.map(t => (
                                         <div key={t.id} className="bg-slate-800 p-6 rounded-2xl border border-slate-700 flex justify-between items-center hover:border-cyan-500 transition-all group shadow-lg">
                                             <div className="flex items-center gap-5">
                                                 <div className="w-14 h-14 bg-slate-900 rounded-xl flex items-center justify-center text-2xl text-cyan-500 shadow-inner group-hover:bg-cyan-600 group-hover:text-white transition-all"><i className="ph-fill ph-car"></i></div>
                                                 <div>
                                                     <h4 className="font-black text-2xl font-mono tracking-tighter">{t.plate}</h4>
-                                                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">{t.model || 'Modelo não inf.'} • {new Date(t.entryTime).toLocaleTimeString()}</p>
+                                                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">{t.model || 'Veículo Master'} • {new Date(t.entryTime).toLocaleTimeString()}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => {
-                                                    const now = new Date();
-                                                    const entry = new Date(t.entryTime);
-                                                    const diffHours = Math.ceil((now - entry) / (1000 * 60 * 60));
-                                                    const total = diffHours * config.priceCarHour;
-                                                    setActiveTicket({...t, exitTime: now.toISOString(), total, parkingFee: total, durationHours: diffHours});
-                                                    setModal('confirm_exit');
-                                                }} className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-xl font-black uppercase text-xs shadow-lg transition-all active:scale-95">Saída</button>
-                                            </div>
+                                            <button onClick={() => {
+                                                const now = new Date();
+                                                const entry = new Date(t.entryTime);
+                                                const diffHours = Math.ceil((now - entry) / (1000 * 60 * 60));
+                                                const total = diffHours * config.priceCarHour;
+                                                setActiveTicket({...t, exitTime: now.toISOString(), total, parkingFee: total, durationHours: diffHours});
+                                                setModal('confirm_exit');
+                                            }} className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-xl font-black uppercase text-xs shadow-lg transition-all active:scale-95">Finalizar</button>
                                         </div>
                                     ))}
                                 </div>
@@ -472,8 +474,8 @@
                         {tab === 'finance' && (
                              <div className="space-y-6 animate-fade-in">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h3 className="font-black uppercase tracking-widest text-slate-400 italic">Histórico de Transações</h3>
-                                    <button onClick={() => { setFinanceForm({type:'Despesa', description:'', value:0, date: new Date().toISOString().split('T')[0], category:'Geral'}); setModal('finance'); }} className="bg-emerald-600 px-6 py-3 rounded-xl font-black uppercase text-xs shadow-lg">Lançar Despesa</button>
+                                    <h3 className="font-black uppercase tracking-widest text-slate-400 italic">Movimentações</h3>
+                                    <button onClick={() => { setFinanceForm({type:'Despesa', description:'', value:0, date: new Date().toISOString().split('T')[0], category:'Geral'}); setModal('finance'); }} className="bg-emerald-600 px-6 py-3 rounded-xl font-black uppercase text-xs shadow-lg">Lançar Avulso</button>
                                 </div>
                                 <div className="bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 shadow-xl">
                                     <table className="w-full text-left">
@@ -481,7 +483,7 @@
                                             <tr><th className="p-4">Data</th><th className="p-4">Descrição</th><th className="p-4">Tipo</th><th className="p-4 text-right">Valor</th></tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-700">
-                                            {[...history.map(h => ({date: h.exitTime, desc: `Ticket ${h.plate}`, type: 'Receita', value: h.total})), ...finances]
+                                            {[...history.map(h => ({date: h.exitTime, desc: `Venda Ticket ${h.plate}`, type: 'Receita', value: h.total})), ...finances]
                                                 .sort((a,b) => new Date(b.date) - new Date(a.date))
                                                 .map((item, idx) => (
                                                 <tr key={idx} className="hover:bg-slate-700/30 transition-all group">
@@ -499,14 +501,14 @@
 
                         {tab === 'config' && (
                             <div className="max-w-2xl bg-slate-800 p-8 rounded-3xl border border-slate-700 animate-fade-in shadow-2xl">
-                                <h3 className="font-black uppercase mb-8 text-cyan-500 italic tracking-widest">Ajustes do Estabelecimento</h3>
+                                <h3 className="font-black uppercase mb-8 text-cyan-500 italic tracking-widest">Ajustes Master</h3>
                                 <div className="space-y-6">
                                     <div><label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Nome Fantasia</label><input className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-cyan-500" value={config.name} onChange={e=>setConfig({...config, name:e.target.value})} /></div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Capacidade (Vagas)</label><input type="number" className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none" value={config.totalSpots} onChange={e=>setConfig({...config, totalSpots:parseInt(e.target.value)})} /></div>
-                                        <div><label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Preço Hora Carro (R$)</label><input type="number" className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:parseFloat(e.target.value)})} /></div>
+                                        <div><label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Vagas Totais</label><input type="number" className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none" value={config.totalSpots} onChange={e=>setConfig({...config, totalSpots:parseInt(e.target.value)})} /></div>
+                                        <div><label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Valor Hora (R$)</label><input type="number" className="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none" value={config.priceCarHour} onChange={e=>setConfig({...config, priceCarHour:parseFloat(e.target.value)})} /></div>
                                     </div>
-                                    <button onClick={() => { saveItem('config', config, 'current'); notify("Configurações salvas no Cofre!"); }} className="w-full bg-cyan-600 py-5 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-cyan-900/30 hover:bg-cyan-500 active:scale-95 transition-all">Salvar Mudanças no Cofre</button>
+                                    <button onClick={() => { saveItem('config', config, 'current'); notify("Configurações atualizadas no Cofre!"); }} className="w-full bg-cyan-600 py-5 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-cyan-900/30 hover:bg-cyan-500 active:scale-95 transition-all">Salvar no Cofre Digital</button>
                                 </div>
                             </div>
                         )}
@@ -522,22 +524,22 @@
                                         <h2 className="font-black text-2xl tracking-tighter uppercase">{config.name || 'PARKING PRO'}</h2>
                                         <div className="my-6 border-b-2 border-dashed border-black"></div>
                                         <h3 className="text-4xl font-black tracking-tighter uppercase mb-2">{activeTicket.plate}</h3>
-                                        <p className="text-xs uppercase font-bold text-slate-600">{activeTicket.model || 'VEÍCULO MASTER'}</p>
+                                        <p className="text-xs uppercase font-bold text-slate-600">{activeTicket.model || 'SISTEMA MASTER'}</p>
                                         <p className="text-[10px] mt-6 font-bold">ENTRADA: {new Date(activeTicket.entryTime).toLocaleString()}</p>
                                         <div className="barcode mt-8"></div>
-                                        <p className="text-[8px] mt-6 uppercase font-bold">Conserve este ticket • Obrigado</p>
+                                        <p className="text-[8px] mt-6 uppercase font-bold tracking-widest">Obrigado pela preferência</p>
                                     </div>
-                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-black py-5 rounded-2xl mt-6 uppercase text-xs tracking-widest shadow-xl">Imprimir Ticket Térmico</button>
+                                    <button onClick={() => window.print()} className="w-full bg-cyan-600 text-white font-black py-5 rounded-2xl mt-6 uppercase text-xs tracking-widest shadow-xl">Imprimir Ticket</button>
                                 </div>
                             )}
 
                             {modal === 'confirm_exit' && activeTicket && (
                                 <div className="bg-slate-800 text-white p-8 rounded-3xl max-w-md w-full border border-slate-700 shadow-2xl animate-fade-in">
-                                    <h3 className="text-xl font-black uppercase italic tracking-tighter mb-8 text-cyan-500">Encerrar Ticket: {activeTicket.plate}</h3>
+                                    <h3 className="text-xl font-black uppercase italic tracking-tighter mb-8 text-cyan-500">Encerrar: {activeTicket.plate}</h3>
                                     <div className="space-y-4 mb-8">
-                                        <div className="flex justify-between border-b border-slate-700 pb-3"><span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Permanência</span><span className="font-black text-sm">{activeTicket.durationHours} Hora(s)</span></div>
-                                        <div className="flex justify-between items-center"><span className="text-sm font-bold uppercase text-slate-400 tracking-widest">Total Master</span><span className="text-4xl font-black text-emerald-400 tracking-tighter">R$ {(activeTicket.total||0).toFixed(2)}</span></div>
-                                        <div className="pt-6"><label className="text-[10px] font-black text-slate-500 uppercase mb-3 block tracking-widest">Método de Pagamento</label>
+                                        <div className="flex justify-between border-b border-slate-700 pb-3"><span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Tempo Total</span><span className="font-black text-sm">{activeTicket.durationHours}h</span></div>
+                                        <div className="flex justify-between items-center"><span className="text-sm font-bold uppercase text-slate-400 tracking-widest">Valor Master</span><span className="text-4xl font-black text-emerald-400 tracking-tighter">R$ {(activeTicket.total||0).toFixed(2)}</span></div>
+                                        <div className="pt-6"><label className="text-[10px] font-black text-slate-500 uppercase mb-3 block tracking-widest">Pagamento</label>
                                             <select className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-cyan-500 font-bold" value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
                                                 <option>Dinheiro</option><option>PIX</option><option>Cartão Crédito</option><option>Cartão Débito</option>
                                             </select>
@@ -545,20 +547,20 @@
                                     </div>
                                     <div className="flex gap-4">
                                         <button onClick={()=>setModal(null)} className="flex-1 bg-slate-700 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg">Cancelar</button>
-                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Confirmar e Salvar</button>
+                                        <button onClick={confirmExit} className="flex-1 bg-emerald-600 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Confirmar e Finalizar</button>
                                     </div>
                                 </div>
                             )}
 
                             {modal === 'finance' && (
                                 <div className="bg-slate-800 w-full max-w-md p-8 rounded-3xl border border-slate-700 shadow-2xl">
-                                    <h3 className="text-xl font-black text-white mb-8 uppercase tracking-tighter italic text-cyan-500">Lançamento Manual no Cofre</h3>
+                                    <h3 className="text-xl font-black text-white mb-8 uppercase tracking-tighter italic text-cyan-500">Lançamento no Cofre</h3>
                                     <div className="space-y-5">
                                         <div><label className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">Tipo</label>
                                             <select className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white font-bold" value={financeForm.type} onChange={e=>setFinanceForm({...financeForm, type:e.target.value})}><option>Receita</option><option>Despesa</option></select>
                                         </div>
                                         <div><label className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">Descrição</label>
-                                            <input className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-cyan-500" placeholder="Ex: Material de limpeza" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} />
+                                            <input className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-cyan-500" placeholder="Ex: Pagamento de Luz" value={financeForm.description} onChange={e=>setFinanceForm({...financeForm, description:e.target.value})} />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div><label className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">Valor (R$)</label>
@@ -571,7 +573,7 @@
                                     </div>
                                     <div className="flex justify-end gap-4 mt-10">
                                         <button onClick={()=>setModal(null)} className="text-slate-500 font-black text-xs uppercase tracking-widest">Cancelar</button>
-                                        <button onClick={() => { saveItem('finances', financeForm); setModal(null); notify("Lançamento salvo no cofre!"); }} className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-black uppercase text-xs shadow-lg">Registrar Agora</button>
+                                        <button onClick={() => { saveItem('finances', financeForm); setModal(null); notify("Lançamento registrado!"); }} className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-black uppercase text-xs shadow-lg">Salvar Agora</button>
                                     </div>
                                 </div>
                             )}
