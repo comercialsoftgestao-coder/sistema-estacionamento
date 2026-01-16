@@ -113,8 +113,8 @@
     
     <!-- REGISTRO SERVICE WORKER & MANIFEST DINÂMICO -->
     <script>
-        // Gerador Dinâmico de Manifest para corrigir Erro 404 e garantir cores
         (function() {
+            // Manifest
             const manifestData = {
                 "name": "Parking Pro",
                 "short_name": "ParkingPro",
@@ -122,32 +122,32 @@
                 "display": "standalone",
                 "background_color": "#0f172a",
                 "theme_color": "#0891b2",
-                "icons": [{
-                    "src": "https://cdn-icons-png.flaticon.com/256/75/75905.png",
-                    "sizes": "256x256",
-                    "type": "image/png"
-                }]
+                "icons": [{"src": "https://cdn-icons-png.flaticon.com/256/75/75905.png", "sizes": "256x256", "type": "image/png"}]
             };
-            const blob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
-            const manifestURL = URL.createObjectURL(blob);
+            const manifestBlob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(manifestBlob);
             const manifestLink = document.createElement('link');
             manifestLink.rel = 'manifest';
             manifestLink.href = manifestURL;
             document.head.appendChild(manifestLink);
-        })();
 
-        // Registro SW
-        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('PWA: Service Worker registrado com sucesso:', reg.scope))
-                    .catch(err => {
-                        if (!err.message.includes('protocol')) {
-                            console.error('PWA: Erro ao registrar Service Worker:', err);
-                        }
-                    });
-            });
-        }
+            // Service Worker (Fix Fetch Error)
+            const swCode = `
+                self.addEventListener('install', () => self.skipWaiting());
+                self.addEventListener('activate', () => self.clients.claim());
+                self.addEventListener('fetch', (event) => {
+                    event.respondWith(fetch(event.request).catch(() => new Response("Offline")));
+                });
+            `;
+            const swBlob = new Blob([swCode], {type: 'application/javascript'});
+            const swUrl = URL.createObjectURL(swBlob);
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(swUrl)
+                    .then(() => console.log('PWA: Service Worker (Blob) registrado.'))
+                    .catch(err => console.log('PWA Error:', err));
+            }
+        })();
     </script>
 </head>
 <body>
@@ -269,13 +269,12 @@
 
         // --- NOVA TELA DE IDENTIDADE (LOGIN/CADASTRO) ---
         const IdentityScreen = ({ onAuthenticate }) => {
-            const [mode, setMode] = useState('login'); // login ou register
+            const [mode, setMode] = useState('login'); 
             const [formData, setFormData] = useState({ username: '', password: '', confirmPassword: '', email: '' });
             const [error, setError] = useState('');
             const [loading, setLoading] = useState(false);
 
             useEffect(() => {
-                // Verificar sessão persistente
                 const savedUser = localStorage.getItem('parkingpro_user_session');
                 const savedKey = localStorage.getItem('parkingpro_user_key');
                 if (savedUser && savedKey) {
@@ -288,63 +287,45 @@
                 setError('');
                 setLoading(true);
 
-                // Normalização do username para usar como ID/Prefixo
                 const safeUsername = formData.username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-
-                if (!safeUsername || safeUsername.length < 3) {
-                    setError('Usuário deve ter pelo menos 3 caracteres alfanuméricos.');
-                    setLoading(false);
-                    return;
-                }
-
-                if (formData.password.length < 4) {
-                    setError('Senha deve ter pelo menos 4 caracteres.');
-                    setLoading(false);
-                    return;
-                }
+                if (!safeUsername || safeUsername.length < 3) { setError('Usuário deve ter pelo menos 3 caracteres.'); setLoading(false); return; }
+                if (formData.password.length < 6) { setError('Senha deve ter pelo menos 6 caracteres.'); setLoading(false); return; } // Firebase pede min 6
 
                 if (mode === 'register') {
-                    if (formData.password !== formData.confirmPassword) {
-                        setError('As senhas não coincidem.');
-                        setLoading(false);
-                        return;
-                    }
-                    // Simulação de cadastro
+                    if (formData.password !== formData.confirmPassword) { setError('Senhas não coincidem.'); setLoading(false); return; }
                 }
 
-                // Autenticação Firebase para acesso ao DB
+                // ESTRATÉGIA DE CONEXÃO: Tenta criar/logar usuário Real para satisfazer regras da nuvem
                 try {
                     const auth = firebase.auth();
-                    if (!auth.currentUser) {
-                        // Tenta usar token do ambiente se disponível
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
+                    // Cria e-mail fictício baseado no usuário para compatibilidade com Auth
+                    const virtualEmail = `${safeUsername}@parking.pro`; 
+                    
+                    if (mode === 'register') {
+                        await auth.createUserWithEmailAndPassword(virtualEmail, formData.password);
+                    } else {
+                        await auth.signInWithEmailAndPassword(virtualEmail, formData.password);
                     }
                 } catch (err) {
-                    // SILENT FAIL SE A CONFIGURAÇÃO DE NUVEM FALHAR
-                    // Isso permite que o app funcione com o Cofre Local se a nuvem estiver mal configurada
-                    const isConfigError = err.code === 'auth/configuration-not-found' || 
-                                          err.code === 'auth/operation-not-allowed' || 
-                                          err.code === 'auth/invalid-api-key' || 
-                                          err.message.includes('Bad Request');
-                                          
-                    if (isConfigError) {
-                         console.warn("Modo Offline: Autenticação nuvem ignorada devido à configuração do projeto.");
-                         // Permite seguir
+                    console.error("Erro Auth", err);
+                    let msg = "Erro ao conectar.";
+                    if(err.code === 'auth/email-already-in-use') msg = "Usuário já existe. Tente Login.";
+                    if(err.code === 'auth/user-not-found') msg = "Usuário não encontrado. Crie uma Nova Identidade.";
+                    if(err.code === 'auth/wrong-password') msg = "Senha incorreta.";
+                    if(err.code === 'auth/network-request-failed') msg = "Sem internet. Entrando em modo Offline.";
+                    
+                    // Se for erro de rede ou config, permite offline
+                    if (err.code === 'auth/network-request-failed' || err.code === 'auth/operation-not-allowed') {
+                        console.warn("Seguindo offline devido a erro de rede/config");
                     } else {
-                        console.error("Erro auth critico", err);
-                        setError('Aviso: Conexão instável. Tente novamente.');
+                        setError(msg);
                         setLoading(false);
                         return;
                     }
                 }
 
-                // Salvar Sessão
-                const userData = { username: safeUsername, email: formData.email, role: 'admin' };
-                const encryptionKey = formData.password; // O segredo é a senha
+                const userData = { username: safeUsername, role: 'admin' };
+                const encryptionKey = formData.password;
 
                 localStorage.setItem('parkingpro_user_session', JSON.stringify(userData));
                 localStorage.setItem('parkingpro_user_key', encryptionKey);
@@ -373,16 +354,8 @@
                                     placeholder="Seu nome de usuário" value={formData.username} onChange={e=>setFormData({...formData, username:e.target.value})} />
                             </div>
                             
-                            {mode === 'register' && (
-                                <div>
-                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">E-mail de Recuperação</label>
-                                    <input className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
-                                        type="email" placeholder="seu@email.com" value={formData.email} onChange={e=>setFormData({...formData, email:e.target.value})} />
-                                </div>
-                            )}
-
                             <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Senha (Chave do Cofre)</label>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Senha (Min 6 caracteres)</label>
                                 <input type="password" className="w-full p-3 bg-slate-950 border border-slate-700 rounded text-sm text-white focus:border-cyan-500 outline-none transition" 
                                     placeholder="********" value={formData.password} onChange={e=>setFormData({...formData, password:e.target.value})} />
                             </div>
@@ -402,7 +375,7 @@
                         
                         <div className="mt-6 border-t border-slate-800 pt-4 text-center">
                             <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1"><i className="ph-fill ph-lock-key"></i> Dados criptografados localmente</p>
-                            <p className="text-[10px] text-slate-500 mt-1">Ambiente Seguro v2.0</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Ambiente Seguro v2.1</p>
                         </div>
                     </div>
                 </div>
@@ -457,10 +430,8 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
 
-            // --- FIREBASE SETUP COM CHAVES FORNECIDAS ---
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             
-            // CONFIGURAÇÃO EXATA FORNECIDA PELO USUÁRIO
             const defaultFirebaseConfig = {
                 apiKey: "AIzaSyDYdrt4kbKtyPbx7ipHHb7wftUAlKeOZeE",
                 authDomain: "estacionamento-332eb.firebaseapp.com",
@@ -498,21 +469,16 @@
                 config: 'Configurações'
             };
 
-            // Função para Limpar Cache e Forçar Atualização
             const hardAppReset = async () => {
                 if (confirm("Limpar cache e forçar atualização? Isso recarregará o sistema.")) {
                     try {
                         if ('serviceWorker' in navigator) {
                             const registrations = await navigator.serviceWorker.getRegistrations();
-                            for (let reg of registrations) { 
-                                await reg.unregister(); 
-                            }
+                            for (let reg of registrations) { await reg.unregister(); }
                         }
                         if ('caches' in window) {
                             const cacheNames = await caches.keys();
-                            await Promise.all(
-                                cacheNames.map(name => caches.delete(name))
-                            );
+                            await Promise.all(cacheNames.map(name => caches.delete(name)));
                         }
                         window.location.reload(true);
                     } catch (e) { 
@@ -522,44 +488,31 @@
                 }
             };
 
-            // --- INICIALIZAÇÃO FIREBASE SEGURA ---
             useEffect(() => {
                 const initFirebase = async () => {
                     if (!firebase.apps.length) {
                         try {
-                            // PRIORIDADE PARA A CONFIGURAÇÃO FORNECIDA MANUALMENTE
-                            // Se __firebase_config estiver disponível, use, senão use default
                             const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
                             firebase.initializeApp(configToUse);
-                        } catch (e) {
-                            console.error("Erro Init Firebase", e);
-                        }
+                        } catch (e) { console.error("Erro Init Firebase", e); }
                     }
-                    
                     try {
                         const firestore = firebase.firestore();
                         setDb(firestore);
                         setIsOnline(true);
-                    } catch(e) {
-                        console.error("Erro Firestore", e);
-                        setIsOnline(false);
-                    }
+                    } catch(e) { console.error("Erro Firestore", e); setIsOnline(false); }
                 };
                 initFirebase();
             }, []);
 
-            // --- BACKUP AUTOMÁTICO CRIPTOGRAFADO (NÃO PERDER DADOS) ---
             useEffect(() => {
                 if (currentUser && encryptionKey) {
-                    // Função para salvar dados criptografados no LocalStorage (Cofre Local)
                     const saveLocal = (key, data) => {
                         try {
                             const encrypted = Security.encrypt(data, encryptionKey);
                             localStorage.setItem(`parkingpro_secure_${currentUser.username}_${key}`, encrypted);
                         } catch(e) { console.error("Erro ao salvar backup local", e); }
                     };
-                    
-                    // Salva todos os estados importantes
                     saveLocal('tickets', tickets);
                     saveLocal('history', history);
                     saveLocal('finances', finances);
@@ -573,23 +526,19 @@
                 }
             }, [tickets, history, finances, subscribers, clients, team, suppliers, agreements, servicesList, config, currentUser, encryptionKey]);
 
-            // --- HOOK DE SINCRONIZAÇÃO BLINDADA (DATA ISOLATION & ENCRYPTION) ---
             const useSync = (collectionName, setState, fallbackData) => {
                 useEffect(() => {
                     if (!currentUser || !encryptionKey) return;
 
-                    // 1. TENTA CARREGAR DO LOCAL STORAGE PRIMEIRO (OFFLINE FIRST / CACHE)
                     const localKey = `parkingpro_secure_${currentUser.username}_${collectionName}`;
                     const localData = localStorage.getItem(localKey);
                     if (localData) {
                         const decrypted = Security.decrypt(localData, encryptionKey);
                         if (decrypted) setState(decrypted);
                     } else if (fallbackData && !localData) {
-                        // Se não tem nada local, usa fallback inicial
                         setState(fallbackData);
                     }
 
-                    // 2. SE ESTIVER ONLINE E AUTENTICADO, TENTA CONECTAR NA NUVEM
                     if (db && firebase.auth().currentUser) {
                         const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${collectionName}`)
                             .onSnapshot(snapshot => {
@@ -598,23 +547,17 @@
                                     let decrypted = rawData;
                                     if (rawData.encryptedData) {
                                         decrypted = Security.decrypt(rawData.encryptedData, encryptionKey);
-                                        if (!decrypted && rawData.encryptedData) {
-                                            console.warn(`Falha ao descriptografar item ${doc.id}`);
-                                            return { ...rawData, id: doc.id, decryptError: true };
-                                        }
+                                        if (!decrypted && rawData.encryptedData) return { ...rawData, id: doc.id, decryptError: true };
                                     }
                                     return { ...decrypted, id: doc.id };
                                 }); 
-                                setState(data); // Atualiza com dados da nuvem
-                            }, err => {
-                                console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}. Usando dados locais.`, err);
-                            });
+                                setState(data); 
+                            }, err => { console.warn(`Modo Offline: Não foi possível sincronizar ${collectionName}.`, err); });
                         return () => unsubscribe();
                     }
                 }, [db, currentUser, encryptionKey]);
             };
 
-            // Ativação dos Syncs apenas quando logado
             useSync('tickets', setTickets, []);
             useSync('history', setHistory, []);
             useSync('finances', setFinances, []);
@@ -626,44 +569,25 @@
             useSync('servicesList', setServicesList, []);
             useSync('config', (data) => { if(data && data.length > 0) setConfig(data[0]); }, []);
 
-            // --- FUNÇÃO DE SALVAMENTO SEGURO (CRYPT + ISOLATION) ---
             const saveItem = async (col, item, idOverride) => {
-                if (!currentUser || !encryptionKey) {
-                    notify('Erro: Cofre fechado. Faça login novamente.', 'error');
-                    return;
-                }
-
+                if (!currentUser || !encryptionKey) { notify('Erro: Cofre fechado.', 'error'); return; }
                 const id = idOverride ? String(idOverride) : String(item.id || Date.now());
                 const itemToSave = { ...item, id: item.id || Date.now() };
                 
-                // Mapeamento para atualizar o state correto na memória
                 if (col === 'tickets') setTickets(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
                 if (col === 'history') setHistory(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'finances') setFinances(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [itemToSave, ...prev] });
                 if (col === 'clients') setClients(prev => { const idx = prev.findIndex(i=>String(i.id)===id); return idx >= 0 ? prev.map(i=>String(i.id)===id?itemToSave:i) : [...prev, itemToSave] });
-                // ... outros states são atualizados via useEffect ou localmente se necessário
 
-                // TENTA SALVAR NA NUVEM (SE TIVER AUTH)
                 if (db && firebase.auth().currentUser) {
-                    const encryptedPayload = {
-                        encryptedData: Security.encrypt(itemToSave, encryptionKey),
-                        updatedAt: new Date().toISOString(),
-                        owner: currentUser.username
-                    };
+                    const encryptedPayload = { encryptedData: Security.encrypt(itemToSave, encryptionKey), updatedAt: new Date().toISOString(), owner: currentUser.username };
                     const securePathCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(`${currentUser.username}_${col}`);
-                    try {
-                        await securePathCollection.doc(id).set(encryptedPayload);
-                    } catch(e) { 
-                        console.warn('Salvando apenas localmente (sem conexão nuvem)'); 
-                    }
-                } else {
-                    console.log("Salvo no modo Offline");
+                    try { await securePathCollection.doc(id).set(encryptedPayload); } catch(e) { console.warn('Salvando apenas localmente'); }
                 }
             };
 
             const deleteItem = async (col, id) => {
                 if (!currentUser) return;
-                
                 const strId = String(id);
                 if (col === 'tickets') setTickets(prev => prev.filter(i => String(i.id) !== strId));
                 if (col === 'history') setHistory(prev => prev.filter(i => String(i.id) !== strId));
@@ -675,7 +599,6 @@
                 }
             };
 
-            // Login e Autenticação Master
             const handleIdentityAuth = (user, key) => {
                 setCurrentUser(user);
                 setEncryptionKey(key);
@@ -693,9 +616,6 @@
                 }
             };
 
-            // ... RESTO DO CÓDIGO (handlers de UI) ...
-            // (Para manter o arquivo completo e seguro, mantive todos os handlers abaixo intactos)
-
             const handleFileScan = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -705,7 +625,7 @@
                     const cleanText = text.replace(/[^A-Z0-9]/ig, '').toUpperCase();
                     const match = cleanText.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/) || cleanText.match(/[A-Z]{3}[0-9]{4}/);
                     if (match) { setEntryForm(prev => ({ ...prev, plate: match[0] })); notify(`Placa detectada: ${match[0]}`, 'success'); }
-                    else { notify('Não foi possível identificar a placa com certeza. Verifique a imagem.', 'error'); }
+                    else { notify('Não foi possível identificar a placa.', 'error'); }
                 } catch (err) { console.error(err); notify('Erro ao processar imagem.', 'error'); }
                 finally { setLoadingCamera(false); }
             };
@@ -732,7 +652,6 @@
 
             const saveFinance = () => { 
                 const val = parseFloat(financeForm.value);
-                
                 if (editingFinanceId) {
                     if (editingItemIsHistory) {
                         const original = history.find(h => h.id === editingFinanceId);
@@ -750,141 +669,32 @@
                     saveItem('finances', newFinance); 
                     notify('Lançamento salvo!');
                 }
-                
-                setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' }); 
-                setModal(null); 
-                setEditingFinanceId(null);
-                setEditingItemIsHistory(false);
+                setFinanceForm({ type: 'Despesa', description: '', value: 0, date: '', category: 'Geral', file: null, fileName: '' }); setModal(null); setEditingFinanceId(null); setEditingItemIsHistory(false);
             };
 
-            const handleTeamSave = () => {
-                if(!teamForm.name) return notify('Nome obrigatório', 'error');
-                const id = editingTeamId || Date.now();
-                const newMember = { ...teamForm, id };
-                saveItem('team', newMember, id);
-                setModal(null); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setEditingTeamId(null); notify('Funcionário salvo!');
-            };
-
-            const handleAgreementSave = () => {
-                if(!agreementForm.name) return notify('Nome obrigatório', 'error');
-                const id = editingAgreementId || Date.now();
-                const newA = { ...agreementForm, id };
-                saveItem('agreements', newA, id);
-                setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); setEditingAgreementId(null); notify('Convênio salvo!');
-            };
-
+            const handleTeamSave = () => { if(!teamForm.name) return notify('Nome obrigatório', 'error'); const id = editingTeamId || Date.now(); const newMember = { ...teamForm, id }; saveItem('team', newMember, id); setModal(null); setTeamForm({ name: '', role: 'Operador', shift: 'Manhã', phone: '' }); setEditingTeamId(null); notify('Funcionário salvo!'); };
+            const handleAgreementSave = () => { if(!agreementForm.name) return notify('Nome obrigatório', 'error'); const id = editingAgreementId || Date.now(); const newA = { ...agreementForm, id }; saveItem('agreements', newA, id); setModal(null); setAgreementForm({ name: '', discountType: 'free_time', value: 0 }); setEditingAgreementId(null); notify('Convênio salvo!'); };
             const handleClientSave = () => { if(!clientForm.name) return notify('Nome obrigatório', 'error'); const id = editClient ? editClient.id : Date.now(); const newClient = { ...clientForm, id }; saveItem('clients', newClient, id); setModal(null); setEditClient(null); setClientForm({ name: '', phone: '', plate: '', points: 0, notes: '' }); notify('Cliente salvo!'); };
             const handleSupplierSave = () => { if(!supplierForm.name) return notify('Nome obrigatório', 'error'); const id = editSupplier ? editSupplier.id : Date.now(); const newSupplier = { ...supplierForm, id }; saveItem('suppliers', newSupplier, id); setModal(null); setEditSupplier(null); setSupplierForm({ name: '', contact: '', category: 'Peças', notes: '' }); notify('Fornecedor salvo!'); };
             const handleSubscriberSave = () => { if(!subscriberForm.name || !subscriberForm.plate) return notify('Dados incompletos', 'error'); const id = editSubscriber ? editSubscriber.id : Date.now(); const newSubscriber = { ...subscriberForm, id }; saveItem('subscribers', newSubscriber, id); setModal(null); setEditSubscriber(null); setSubscriberForm({ name: '', plate: '', model: '', plan: 'Integral', dueDay: 10, active: true }); notify('Mensalista salvo!'); };
 
             const handleEditTicket = (t) => { setEditTicketForm({ plate: t.plate, model: t.model, type: t.type, notes: t.notes || '' }); setActiveTicket(t); setModal('edit_ticket'); };
-            const saveTicketEdit = () => {
-                if(activeTicket) {
-                    const updated = { ...activeTicket, ...editTicketForm };
-                    saveItem('tickets', updated, activeTicket.id);
-                    setModal(null); notify('Veículo atualizado!');
-                }
-            };
+            const saveTicketEdit = () => { if(activeTicket) { const updated = { ...activeTicket, ...editTicketForm }; saveItem('tickets', updated, activeTicket.id); setModal(null); notify('Veículo atualizado!'); } };
             const handleDeleteTicket = (id) => { if(confirm('Excluir veículo do pátio?')) { deleteItem('tickets', id); notify('Veículo excluído'); } };
 
-            const handleEditFinance = (item) => { 
-                setEditingFinanceId(item.id); 
-                setEditingItemIsHistory(!!item.isHistory); 
-                setFinanceForm({
-                    type: item.type,
-                    description: item.isHistory ? `Ticket #${item.id} - ${item.plate}` : item.description,
-                    value: item.value || item.total, 
-                    date: item.date ? item.date.split('T')[0] : '',
-                    category: item.category || 'Estacionamento',
-                    file: item.file || null,
-                    fileName: item.fileName || ''
-                }); 
-                setModal('finance'); 
-            };
+            const handleEditFinance = (item) => { setEditingFinanceId(item.id); setEditingItemIsHistory(!!item.isHistory); setFinanceForm({ type: item.type, description: item.isHistory ? `Ticket #${item.id} - ${item.plate}` : item.description, value: item.value || item.total, date: item.date ? item.date.split('T')[0] : '', category: item.category || 'Estacionamento', file: item.file || null, fileName: item.fileName || '' }); setModal('finance'); };
+            const handleDeleteFinance = (item) => { if(confirm('Excluir este lançamento permanentemente?')) { if (item.isHistory) { deleteItem('history', item.id); } else { deleteItem('finances', item.id); } notify('Excluído com sucesso!'); } };
 
-            const handleDeleteFinance = (item) => { 
-                if(confirm('Excluir este lançamento permanentemente?')) { 
-                    if (item.isHistory) {
-                        deleteItem('history', item.id);
-                    } else {
-                        deleteItem('finances', item.id); 
-                    }
-                    notify('Excluído com sucesso!'); 
-                } 
-            };
-
-            const saveServiceConfig = () => {
-                if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error');
-                const price = parseFloat(serviceConfigForm.price);
-                if (editingServiceId) {
-                    const updated = { ...serviceConfigForm, id: editingServiceId, price };
-                    saveItem('servicesList', updated, editingServiceId);
-                    setEditingServiceId(null); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço atualizado!');
-                } else {
-                    const newService = { ...serviceConfigForm, id: Date.now(), price };
-                    saveItem('servicesList', newService);
-                    setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!');
-                }
-            };
+            const saveServiceConfig = () => { if(!serviceConfigForm.name) return notify('Nome obrigatório', 'error'); const price = parseFloat(serviceConfigForm.price); if (editingServiceId) { const updated = { ...serviceConfigForm, id: editingServiceId, price }; saveItem('servicesList', updated, editingServiceId); setEditingServiceId(null); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço atualizado!'); } else { const newService = { ...serviceConfigForm, id: Date.now(), price }; saveItem('servicesList', newService); setServiceConfigForm({ name: '', price: 0 }); notify('Serviço adicionado!'); } };
             const handleEditService = (service) => { setServiceConfigForm({ name: service.name, price: service.price }); setEditingServiceId(service.id); };
             const cancelEditService = () => { setServiceConfigForm({ name: '', price: 0 }); setEditingServiceId(null); };
             const removeServiceConfig = (id) => { deleteItem('servicesList', id); };
             
             const downloadBills = () => { const dueBills = finances.filter(f => f.type === 'Despesa'); if (dueBills.length === 0) return notify('Nenhuma despesa.', 'info'); let textContent = "RELATÓRIO DE CONTAS\n===================\n\n"; dueBills.forEach(b => { textContent += `DATA: ${new Date(b.date).toLocaleDateString()}\nDESC: ${b.description}\nCAT: ${b.category}\nVALOR: ${formatCurrency(b.value)}\n----------------\n`; }); textContent += `\nTOTAL: ${formatCurrency(dueBills.reduce((acc, curr) => acc + curr.value, 0))}`; const blob = new Blob([textContent], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `boletos_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Download iniciado.'); };
-            
-            const downloadDashboardReport = (isMonthly = false) => { 
-                const reportDate = new Date();
-                const reportStr = isMonthly ? `MÊS: ${reportDate.getMonth() + 1}/${reportDate.getFullYear()}` : `DATA: ${reportDate.toLocaleDateString()}`;
-                
-                let content = `RELATÓRIO GERENCIAL (${isMonthly ? 'MENSAL' : 'DIÁRIO'})\n${reportStr}\n\n`;
-                
-                const filteredHistory = isMonthly ? history.filter(h => new Date(h.exitTime).getMonth() === reportDate.getMonth()) : history.filter(h => new Date(h.exitTime).toDateString() === reportDate.toDateString());
-                const filteredFinance = isMonthly ? finances.filter(f => new Date(f.date + 'T12:00:00').getMonth() === reportDate.getMonth()) : finances.filter(f => new Date(f.date + 'T12:00:00').toDateString() === reportDate.toDateString());
-
-                const rev = filteredHistory.reduce((acc, curr) => acc + curr.total, 0) + filteredFinance.filter(f => f.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0);
-                const exp = filteredFinance.filter(f => f.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0);
-
-                content += `Receita Total: ${formatCurrency(rev)}\nDespesas: ${formatCurrency(exp)}\nBalanço: ${formatCurrency(rev - exp)}\n\nMOVIMENTAÇÕES:\n`;
-                filteredHistory.forEach(h => { content += `[${new Date(h.exitTime).toLocaleString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; });
-                
-                const blob = new Blob([content], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Relatorio_${isMonthly ? 'Mensal' : 'Diario'}_${new Date().toISOString().split('T')[0]}.txt`;
-                a.click();
-                notify('Relatório baixado!');
-            };
-
-            const sendWhatsAppTicket = (ticket) => {
-                const message = `Olá! Segue seu ticket do *${config.name || 'Estacionamento'}*:\n\n🚙 *Placa:* ${ticket.plate}\n🕒 *Entrada:* ${new Date(ticket.entryTime).toLocaleString()}\n\nObrigado pela preferência!`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-            };
-
-            const addPoints = (clientId, amount) => { 
-                const c = clients.find(c=>c.id===clientId);
-                if(c) {
-                    const updated = { ...c, points: Math.max(0, (c.points || 0) + amount) };
-                    saveItem('clients', updated, c.id);
-                    notify(amount > 0 ? 'Pontos add!' : 'Pontos resgatados!'); 
-                }
-            };
-            const handleChangePassword = () => { if (passwordForm.current !== credentials.pass) return notify('Senha incorreta.', 'error'); if (passwordForm.new !== passwordForm.confirm) return notify('Senhas não coincidem.', 'error'); if (!passwordForm.new) return notify('Senha vazia.', 'error'); const newCreds = { ...credentials, pass: passwordForm.new }; setCredentials(newCreds); localStorage.setItem('parkingpro_credentials', JSON.stringify(newCreds)); if (localStorage.getItem('parkingpro_saved_pass')) localStorage.setItem('parkingpro_saved_pass', passwordForm.new); setPasswordForm({ current: '', new: '', confirm: '' }); notify('Senha alterada!'); };
-
-            const stats = useMemo(() => {
-                const occupied = tickets.length; const free = config.totalSpots - occupied;
-                const ticketsRevenue = history.filter(h => new Date(h.exitTime).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.total, 0);
-                const extraRevenue = finances.filter(f => f.type === 'Receita' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
-                const expenses = finances.filter(f => f.type === 'Despesa' && new Date(f.date + 'T12:00:00').toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.value, 0);
-                const totalRevenue = ticketsRevenue + extraRevenue; const balance = totalRevenue - expenses;
-                return { occupied, free, totalRevenue, expenses, balance, activeSubscribers: subscribers.filter(s => s.active).length };
-            }, [tickets, history, subscribers, finances, config]);
-
-            // Save config agora salva seguro também
-            const saveConfig = () => { 
-                saveItem('config', config, 'main_config'); 
-                notify('Configurações salvas no Cofre!'); 
-            };
+            const downloadDashboardReport = (isMonthly = false) => { const reportDate = new Date(); const reportStr = isMonthly ? `MÊS: ${reportDate.getMonth() + 1}/${reportDate.getFullYear()}` : `DATA: ${reportDate.toLocaleDateString()}`; let content = `RELATÓRIO GERENCIAL (${isMonthly ? 'MENSAL' : 'DIÁRIO'})\n${reportStr}\n\n`; const filteredHistory = isMonthly ? history.filter(h => new Date(h.exitTime).getMonth() === reportDate.getMonth()) : history.filter(h => new Date(h.exitTime).toDateString() === reportDate.toDateString()); const filteredFinance = isMonthly ? finances.filter(f => new Date(f.date + 'T12:00:00').getMonth() === reportDate.getMonth()) : finances.filter(f => new Date(f.date + 'T12:00:00').toDateString() === reportDate.toDateString()); const rev = filteredHistory.reduce((acc, curr) => acc + curr.total, 0) + filteredFinance.filter(f => f.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0); const exp = filteredFinance.filter(f => f.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0); content += `Receita Total: ${formatCurrency(rev)}\nDespesas: ${formatCurrency(exp)}\nBalanço: ${formatCurrency(rev - exp)}\n\nMOVIMENTAÇÕES:\n`; filteredHistory.forEach(h => { content += `[${new Date(h.exitTime).toLocaleString()}] ${h.plate} - ${formatCurrency(h.total)}\n`; }); const blob = new Blob([content], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Relatorio_${isMonthly ? 'Mensal' : 'Diario'}_${new Date().toISOString().split('T')[0]}.txt`; a.click(); notify('Relatório baixado!'); };
+            const sendWhatsAppTicket = (ticket) => { const message = `Olá! Segue seu ticket do *${config.name || 'Estacionamento'}*:\n\n🚙 *Placa:* ${ticket.plate}\n🕒 *Entrada:* ${new Date(ticket.entryTime).toLocaleString()}\n\nObrigado pela preferência!`; window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank'); };
+            const addPoints = (clientId, amount) => { const c = clients.find(c=>c.id===clientId); if(c) { const updated = { ...c, points: Math.max(0, (c.points || 0) + amount) }; saveItem('clients', updated, c.id); notify(amount > 0 ? 'Pontos add!' : 'Pontos resgatados!'); } };
+            const saveConfig = () => { saveItem('config', config, 'main_config'); notify('Configurações salvas no Cofre!'); };
 
             if (view === 'identity') return <IdentityScreen onAuthenticate={handleIdentityAuth} />;
 
@@ -900,54 +710,25 @@
                             <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}><i className="ph-bold ph-x text-2xl"></i></button>
                         </div>
                         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-                            {[
-                                { id: 'dashboard', label: 'Visão Geral', icon: 'gauge', roles: ['admin', 'operator'] },
-                                { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile', roles: ['admin', 'operator'] },
-                                { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half', roles: ['admin', 'operator'] }, 
-                                { id: 'finance', label: 'Financeiro', icon: 'currency-dollar', roles: ['admin', 'operator'] },
-                                { id: 'suppliers', label: 'Fornecedores', icon: 'truck', roles: ['admin'] }, 
-                                { id: 'team', label: 'Equipe', icon: 'users', roles: ['admin'] },
-                                { id: 'clients', label: 'Fidelidade', icon: 'identification-card', roles: ['admin', 'operator'] },
-                                { id: 'subscribers', label: 'Mensalistas', icon: 'users-three', roles: ['admin', 'operator'] },
-                                { id: 'agreements', label: 'Convênios', icon: 'handshake', roles: ['admin'] },
-                                { id: 'config', label: 'Configurações', icon: 'gear', roles: ['admin'] },
-                            ].filter(i => i.roles.includes(userRole)).map(item => (
+                            {[ { id: 'dashboard', label: 'Visão Geral', icon: 'gauge', roles: ['admin', 'operator'] }, { id: 'patio', label: 'Pátio & Entrada', icon: 'car-profile', roles: ['admin', 'operator'] }, { id: 'carwash', label: 'Lava-rápido', icon: 'drop-half', roles: ['admin', 'operator'] }, { id: 'finance', label: 'Financeiro', icon: 'currency-dollar', roles: ['admin', 'operator'] }, { id: 'suppliers', label: 'Fornecedores', icon: 'truck', roles: ['admin'] }, { id: 'team', label: 'Equipe', icon: 'users', roles: ['admin'] }, { id: 'clients', label: 'Fidelidade', icon: 'identification-card', roles: ['admin', 'operator'] }, { id: 'subscribers', label: 'Mensalistas', icon: 'users-three', roles: ['admin', 'operator'] }, { id: 'agreements', label: 'Convênios', icon: 'handshake', roles: ['admin'] }, { id: 'config', label: 'Configurações', icon: 'gear', roles: ['admin'] }, ].filter(i => i.roles.includes(userRole)).map(item => (
                                 <button key={item.id} onClick={() => { setTab(item.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold ${tab === item.id ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                                     <i className={`ph ph-${item.icon} text-xl`}></i> {item.label}
                                 </button>
                             ))}
                         </nav>
                         
-                        {/* BOTÃO DE LOGOUT SEGURO */}
                         <div className="px-4 pb-2">
-                             <button onClick={handleLogout} className="w-full bg-red-900/20 hover:bg-red-900/40 text-red-400 p-3 rounded-lg flex items-center justify-center gap-2 text-xs font-bold transition">
-                                <i className="ph-bold ph-lock-key-open"></i> FECHAR COFRE
-                             </button>
+                             <button onClick={handleLogout} className="w-full bg-red-900/20 hover:bg-red-900/40 text-red-400 p-3 rounded-lg flex items-center justify-center gap-2 text-xs font-bold transition"><i className="ph-bold ph-lock-key-open"></i> FECHAR COFRE</button>
                         </div>
 
                         <div className="p-4 text-center text-xs text-slate-600 border-t border-slate-800">
                              <div className="flex flex-col gap-2 mb-2">
-                                 {isOnline ? (
-                                     <span className="flex items-center justify-center gap-2 text-emerald-500 font-bold animate-pulse">
-                                         <i className="ph-fill ph-cloud-check text-lg"></i> Online
-                                     </span>
-                                 ) : (
-                                     <span className="flex items-center justify-center gap-2 text-orange-500 font-bold">
-                                         <i className="ph-fill ph-wifi-slash text-lg"></i> Offline
-                                     </span>
-                                 )}
-                                 {currentUser && (
-                                     <span className="flex items-center justify-center gap-2 text-cyan-500 font-bold bg-cyan-950/30 py-1 rounded">
-                                         <i className="ph-fill ph-user-circle text-lg"></i> {currentUser.username}
-                                     </span>
-                                 )}
-                                 <span className="flex items-center justify-center gap-2 text-violet-500 font-bold bg-violet-950/30 py-1 rounded">
-                                     <i className="ph-fill ph-shield-check text-lg"></i> COFRE ATIVO
-                                 </span>
+                                 {isOnline ? (<span className="flex items-center justify-center gap-2 text-emerald-500 font-bold animate-pulse"><i className="ph-fill ph-cloud-check text-lg"></i> Online</span>) : (<span className="flex items-center justify-center gap-2 text-orange-500 font-bold"><i className="ph-fill ph-wifi-slash text-lg"></i> Offline</span>)}
+                                 {currentUser && (<span className="flex items-center justify-center gap-2 text-cyan-500 font-bold bg-cyan-950/30 py-1 rounded"><i className="ph-fill ph-user-circle text-lg"></i> {currentUser.username}</span>)}
+                                 <span className="flex items-center justify-center gap-2 text-violet-500 font-bold bg-violet-950/30 py-1 rounded"><i className="ph-fill ph-shield-check text-lg"></i> COFRE ATIVO</span>
                              </div>
                              <div className="mt-4 pt-4 border-t border-slate-800">
-                                <p className="font-bold text-slate-500">© 2026 SoftGestão. Todos os direitos reservados.</p>
-                                <p className="mt-1">Pertence a Adriana Mendes da Cruz Sousa.</p>
+                                <p className="font-bold text-slate-500">© 2026 SoftGestão.</p>
                              </div>
                         </div>
                     </aside>
@@ -995,12 +776,8 @@
                                             <p className="text-sm text-gray-600">
                                                 Utilize esta opção caso o sistema apresente falhas ou para receber novas atualizações. Isso limpará o cache local e forçará o recarregamento da aplicação.
                                             </p>
-                                            <button 
-                                                onClick={hardAppReset}
-                                                className="w-full bg-red-600 text-white px-4 py-4 rounded-lg font-bold text-sm hover:bg-red-700 transition shadow-lg flex items-center justify-center gap-2 transform hover:scale-[1.02]"
-                                            >
-                                                <span className="text-lg">🔄</span>
-                                                LIMPAR CACHE E FORÇAR ATUALIZAÇÃO
+                                            <button onClick={hardAppReset} className="w-full bg-red-600 text-white px-4 py-4 rounded-lg font-bold text-sm hover:bg-red-700 transition shadow-lg flex items-center justify-center gap-2 transform hover:scale-[1.02]">
+                                                <span className="text-lg">🔄</span> LIMPAR CACHE E FORÇAR ATUALIZAÇÃO
                                             </button>
                                         </div>
                                     </div>
